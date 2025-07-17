@@ -1,0 +1,19 @@
+# Archivos de entorno
+.env
+*.env
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Pipenv
+Pipfile.lock
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+*.mp4
+*.jpg
+*.png
