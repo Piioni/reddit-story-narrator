@@ -31,9 +31,6 @@ services:
     networks:
       - scraper_net
 
-volumes:
-  postgres_data:
-
 networks:
   scraper_net:
     name: reddit_scraper_network  
@@ -41,3 +38,6 @@ networks:
     ipam:
       config:
         - subnet: 192.168.0.0/24
+
+volumes:
+  postgres_data:
