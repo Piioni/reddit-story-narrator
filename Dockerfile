@@ -1,6 +1,9 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
-WORKDIR /app
+WORKDIR /usr/src/app
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Instalar dependencias del sistema
 RUN apt-get update && \
@@ -10,13 +13,8 @@ RUN apt-get update && \
     libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Copiar y instalar dependencias de Python
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copiar código fuente
-COPY src/ ./src/
-COPY config/ ./config/
+# Crear directorios necesarios
+COPY . .
 
 # Crear directorio de logs
 RUN mkdir -p logs
