@@ -1,10 +1,5 @@
 FROM python:3.13-slim
 
-WORKDIR /usr/src/app
-
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
-
 # Instalar dependencias del sistema
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -13,11 +8,19 @@ RUN apt-get update && \
     libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
+
+WORKDIR /app
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+
 # Crear directorios necesarios
-COPY . .
+COPY src/ src/
+COPY config/ config/
 
 # Crear directorio de logs
-RUN mkdir -p logs
+RUN mkdir -p /app/logs && chmod 777 /app/logs
 
 # Comando por defecto
-CMD ["python", "-m", "src.main"]
+CMD ["python", "src/main.py"]
