@@ -4,7 +4,7 @@ from datetime import datetime
 import time
 from typing import Dict, List, Optional
 from dataclasses import dataclass
-from ..utils.logger import StructuredLogger
+from utils.logger import StructuredLogger
 
 @dataclass
 class DatabaseConfig:

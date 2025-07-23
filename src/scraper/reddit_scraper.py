@@ -6,6 +6,7 @@ from typing import List, Dict, Optional
 from praw.exceptions import RedditAPIException, PRAWException
 from scraper.database import DatabaseManager, DatabaseConfig
 from utils.logger import StructuredLogger
+import hashlib
 
 class RedditScraper:
     def __init__(
@@ -117,7 +118,6 @@ class RedditScraper:
                 'url': f'https://www.reddit.com{post.permalink}' if post.permalink else None,
                 'created_utc': datetime.fromtimestamp(post.created_utc, timezone.utc),
                 'is_nsfw': post.over_18,
-                'processed_at': datetime.now(timezone.utc)
             }
             
             # Extraer updates del texto
@@ -125,6 +125,7 @@ class RedditScraper:
             updates = self._extract_updates(post)
 
             # Obtener comentarios relevantes
+            self.logger.log('INFO', 'Buscando comentarios relevantes', post_id=post.id, author=post_data['author'])
             comments = self._fetch_relevant_comments(post)
             
             # Guardar en base de datos
@@ -138,6 +139,7 @@ class RedditScraper:
         except Exception as e:
             self.logger.log('ERROR', 'Error procesando post', post_id=post.id, error=str(e))
             return None
+
 
     # Funciones para extraer updates de los posts mediante varias estrategias
     def _extract_updates(self, post) -> List[Dict]:
@@ -195,7 +197,7 @@ class RedditScraper:
             
             # Configurar comentarios
             post.comment_sort = 'new'  # Ordenar por fecha para capturar updates cronológicos
-            post.comment_limit = 100   # Límite alto para capturar todos los comentarios del autor
+            post.comment_limit = 50   # Límite alto para capturar todos los comentarios del autor
             
             # Evitar cargar "more comments" para mejor rendimiento
             post.comments.replace_more(limit=0)
@@ -225,7 +227,7 @@ class RedditScraper:
                 is_substantial = len(comment_original.strip()) > 50
                 
                 # Verificar si tiene alta interacción (podría indicar información importante)
-                has_interaction = comment.score > 10 if hasattr(comment, 'score') else False
+                has_interaction = comment.score > 25 if hasattr(comment, 'score') else False
                 
                 # Patrones específicos que indican updates en comentarios
                 update_patterns = [
@@ -255,9 +257,9 @@ class RedditScraper:
                 if is_update:
                     updates.append({
                         'id': comment.id,
+                        'post_id': post.id,
                         'type': 'author_comment',
-                        'text': comment_original,
-                        'source': f'author_comment_{comment.id}',
+                        'update_text': comment_original,
                         'created_utc': datetime.fromtimestamp(comment.created_utc, timezone.utc),
                         'upvotes': getattr(comment, 'score', 0),
                         'url': f'https://www.reddit.com{post.permalink}{comment.id}/'
@@ -275,7 +277,6 @@ class RedditScraper:
         return updates
 
     def _find_updates_in_subreddit(self, original_post) -> List[Dict]:
-        """Busca posts del mismo autor en el subreddit que sean updates."""
         updates = []
         
         try:
@@ -293,11 +294,13 @@ class RedditScraper:
             ]
             
             # Buscar posts del autor posteriores al original
-            author_posts = list(subreddit.search(f'author:{author_name}', limit=50, sort='new'))
+            author_posts = list(subreddit.search(f'author:{author_name}', limit=25, sort='new'))
             
             for post in author_posts:
+                update_submitted_time = datetime.fromtimestamp(post.created_utc, timezone.utc)
+                
                 if (post.id != original_post.id and 
-                    post.created_utc > original_post.created_utc and
+                    update_submitted_time > original_created and
                     post.author and post.author.name == author_name):
                     
                     # Verificar si el título o contenido sugiere que es un update
@@ -319,10 +322,10 @@ class RedditScraper:
                     if is_update:
                         updates.append({
                             'id': post.id,
+                            'post_id': original_post.id,
                             'type': 'subreddit_post',
                             'text': f"TÍTULO: {post.title}\n\n{post.selftext}",
-                            'source': f'subreddit_post_{post.id}',
-                            'created_utc': datetime.fromtimestamp(post.created_utc, timezone.utc),
+                            'created_utc': update_submitted_time,
                             'upvotes': post.score,
                             'url': f'https://www.reddit.com{post.permalink}'
                         })
@@ -334,7 +337,6 @@ class RedditScraper:
         return updates
 
     def _find_updates_in_user_profile(self, original_post) -> List[Dict]:
-        """Busca updates en el perfil del usuario."""
         updates = []
         
         try:
@@ -354,8 +356,10 @@ class RedditScraper:
             user_posts = list(author.submissions.new(limit=25))
             
             for post in user_posts:
+                update_submitted_time = datetime.fromtimestamp(post.created_utc, timezone.utc)
+                
                 if (post.id != original_post.id and 
-                    post.created_utc > original_post.created_utc):
+                    update_submitted_time > original_created):
                     
                     title_lower = post.title.lower()
                     text_lower = post.selftext.lower() if post.selftext else ""
@@ -376,7 +380,7 @@ class RedditScraper:
                             'type': 'profile_post',
                             'text': f"TÍTULO: {post.title}\n\nSUBREDDIT: {post.subreddit.display_name}\n\n{post.selftext}",
                             'source': f'profile_post_{post.id}',
-                            'created_utc': datetime.fromtimestamp(post.created_utc, timezone.utc),
+                            'created_utc': update_submitted_time,
                             'upvotes': post.score,
                             'url': f'https://www.reddit.com{post.permalink}'
                         })
@@ -390,31 +394,88 @@ class RedditScraper:
     def _deduplicate_updates(self, updates: List[Dict]) -> List[Dict]:
         if not updates:
             return updates
-            
+        
+        self.logger.log('INFO', 'Iniciando deduplicación de updates', total_updates=len(updates))
         unique_updates = []
-        seen_texts = set()
+        seen_hashes = set()
+        duplicates_found = 0
+        short_content_skipped = 0
         
         for update in updates:
             try:
-                # Asegurar que 'text' existe y es string
-                text = update.get('text', '')
-                if not isinstance(text, str):
-                    continue
-                    
-                # Crear una "huella" del texto para detectar duplicados
-                text_fingerprint = re.sub(r'\s+', ' ', text[:200].lower().strip())
+                # Obtener texto del update
+                text = update.get('update_text', update.get('text', ''))
+                update_id = update.get('id', 'unknown')
                 
-                if text_fingerprint not in seen_texts and len(text_fingerprint) > 20:
-                    seen_texts.add(text_fingerprint)
+                if not isinstance(text, str) or len(text.strip()) < 20:
+                    short_content_skipped += 1
+                    self.logger.log('DEBUG', 'Update omitido por contenido muy corto', 
+                                  update_id=update_id, content_length=len(text.strip()) if isinstance(text, str) else 0)
+                    continue
+                
+                # Crear hash único del contenido normalizado
+                content_hash = self._create_content_hash(text)
+                
+                if not content_hash:
+                    self.logger.log('DEBUG', 'No se pudo generar hash para update', update_id=update_id)
+                    continue
+                
+                if content_hash in seen_hashes:
+                    duplicates_found += 1
+                    self.logger.log('INFO', 'Update duplicado encontrado y descartado', 
+                                  update_id=update_id, 
+                                  content_hash=content_hash[:8],
+                                  update_type=update.get('type', 'unknown'))
+                else:
+                    seen_hashes.add(content_hash)
                     unique_updates.append(update)
+                    self.logger.log('DEBUG', 'Update único agregado', 
+                                  update_id=update_id, 
+                                  content_hash=content_hash[:8],
+                                  update_type=update.get('type', 'unknown'))
                     
             except Exception as e:
-                self.logger.log('DEBUG', 'Error procesando update en deduplicación', error=str(e))
+                self.logger.log('WARNING', 'Error procesando update en deduplicación', 
+                              update_id=update.get('id', 'unknown'), error=str(e))
                 continue
         
+        self.logger.log('INFO', 'Deduplicación completada', 
+                      original_count=len(updates),
+                      unique_count=len(unique_updates),
+                      duplicates_removed=duplicates_found,
+                      short_content_skipped=short_content_skipped)
+        
         return unique_updates
-    
-    
+
+    def _create_content_hash(self, text: str) -> Optional[str]:
+        try:
+            # Normalizar texto: minúsculas, remover puntuación y espacios extra
+            normalized = re.sub(r'[^\w\s]', '', text.lower())
+            normalized = re.sub(r'\s+', ' ', normalized).strip()
+            
+            if len(normalized) < 20:
+                return None
+            
+            # Remover palabras muy comunes que pueden aparecer en cualquier update
+            stopwords = {'update', 'edit', 'edited', 'actualización', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'a', 'an', 'is', 'was', 'are', 'were', 'i', 'me', 'my', 'you', 'your', 'he', 'she', 'it', 'we', 'they', 'this', 'that'}
+            
+            words = normalized.split()
+            filtered_words = [w for w in words if len(w) > 2 and w not in stopwords]
+            
+            # Usar las primeras 20 palabras significativas para el hash
+            content_for_hash = ' '.join(filtered_words[:20])
+            
+            if len(content_for_hash) < 15:
+                return None
+            
+            # Crear hash MD5 del contenido normalizado
+            return hashlib.md5(content_for_hash.encode('utf-8')).hexdigest()
+            
+        except Exception as e:
+            self.logger.log('DEBUG', 'Error generando hash de contenido', error=str(e))
+            return None
+
+
     # Funciones para manejar que tipo de posts buscar
     def _get_posts_generator(self, subreddit):
         limit = self.search_params['limit']

@@ -9,8 +9,6 @@ CREATE TABLE IF NOT EXISTS posts (
     url TEXT NOT NULL,
     created_utc TIMESTAMP NOT NULL,
     is_nsfw BOOLEAN DEFAULT FALSE,
-    -- Narrativa con updates
-    full_narrative TEXT,
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -18,9 +16,12 @@ CREATE TABLE IF NOT EXISTS posts (
 CREATE TABLE IF NOT EXISTS updates (
     id TEXT PRIMARY KEY,
     post_id TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
     update_text TEXT NOT NULL,
     update_order INTEGER NOT NULL,
-    created_utc TIMESTAMP NOT NULL
+    created_utc TIMESTAMP NOT NULL,
+    upvotes INTEGER NOT NULL,
+    url TEXT NOT NULL
 );
 
 -- Tabla de comentarios relevantes
@@ -30,9 +31,7 @@ CREATE TABLE IF NOT EXISTS comments (
     author TEXT,
     text TEXT NOT NULL,
     upvotes INTEGER NOT NULL,
-    created_utc TIMESTAMP NOT NULL,
-    is_submitter BOOLEAN DEFAULT FALSE,
-    is_premium BOOLEAN DEFAULT FALSE
+    created_utc TIMESTAMP NOT NULL
 );
 
 -- Índices para mejor performance
