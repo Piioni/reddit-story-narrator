@@ -1,3 +1,3 @@
-from .logger import StructuredLogger
+from utils.logger import StructuredLogger
 
 __all__ = ['StructuredLogger']

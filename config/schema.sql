@@ -1,18 +1,16 @@
 -- Tabla principal de posts
 CREATE TABLE IF NOT EXISTS posts (
     id TEXT PRIMARY KEY,
-    parent_id TEXT,
+    author TEXT NOT NULL,
     subreddit TEXT NOT NULL,
     title TEXT NOT NULL,
     text TEXT NOT NULL,
     upvotes INTEGER NOT NULL,
     url TEXT NOT NULL,
     created_utc TIMESTAMP NOT NULL,
-    media_type TEXT DEFAULT 'text',
-    media_url TEXT,
     is_nsfw BOOLEAN DEFAULT FALSE,
+    -- Narrativa con updates
     full_narrative TEXT,
-    narrative_order INTEGER DEFAULT 0,
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -32,9 +30,9 @@ CREATE TABLE IF NOT EXISTS comments (
     author TEXT,
     text TEXT NOT NULL,
     upvotes INTEGER NOT NULL,
+    created_utc TIMESTAMP NOT NULL,
     is_submitter BOOLEAN DEFAULT FALSE,
-    is_premium BOOLEAN DEFAULT FALSE,
-    created_utc TIMESTAMP NOT NULL
+    is_premium BOOLEAN DEFAULT FALSE
 );
 
 -- Índices para mejor performance

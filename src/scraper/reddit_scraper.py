@@ -1,12 +1,11 @@
 import praw
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from praw.exceptions import RedditAPIException, PRAWException
-
-from .database import DatabaseManager, DatabaseConfig
-from ..utils.logger import StructuredLogger
+from scraper.database import DatabaseManager, DatabaseConfig
+from utils.logger import StructuredLogger
 
 class RedditScraper:
     def __init__(
@@ -15,8 +14,8 @@ class RedditScraper:
         client_secret: str,
         user_agent: str,
         subreddits: List[str],
-        search_params: Optional[Dict] = None,
-        db_config: Optional[Dict] = None
+        search_params: Dict,
+        db_config: Dict  
     ):
         # Configurar Reddit API
         self.reddit = praw.Reddit(
@@ -26,21 +25,7 @@ class RedditScraper:
         )
         
         self.subreddits = subreddits
-        self.search_params = search_params or self._default_search_params()
-        
-        # Configurar logger
-        self.logger = StructuredLogger('RedditScraper')
-        
-        # Configurar base de datos si se proporciona
-        self.db_manager = None
-        if db_config:
-            db_config_obj = DatabaseConfig(**db_config)
-            self.db_manager = DatabaseManager(db_config_obj, self.logger)
-            self.db_manager.initialize_schema()
-    
-    def _default_search_params(self) -> Dict:
-        """Parámetros de búsqueda por defecto."""
-        return {
+        self.search_params = search_params or {
             'time_filter': 'week',
             'min_upvotes': 250,
             'limit': 5,
@@ -48,34 +33,31 @@ class RedditScraper:
             'min_comment_upvotes': 100,
             'max_comment_length': 500
         }
-    
-    def fetch_posts(self) -> List[Dict]:
-        """Obtiene posts de los subreddits configurados."""
-        posts_data = []
-        limit = self.search_params['limit']
+
+        # Configurar logger
+        self.logger = StructuredLogger('RedditScraper')
+
+        self.db_config = db_config 
         
+         # Configurar Database
+        db_config_obj = DatabaseConfig(**db_config)
+        self.db_manager = DatabaseManager(db_config_obj, self.logger)
+        self.db_manager.initialize_schema()
+    
+    
+    # Funciones para scrappear subreddits en base a parametros
+    def fetch_posts(self) -> List[Dict]:
+        posts_data = []
+        
+        # Recorrer cada subreddit y obtener posts
         for subreddit_name in self.subreddits:
             try:
                 self.logger.log('INFO', 'Scrapeando subreddit', subreddit=subreddit_name)
-                
-                subreddit = self.reddit.subreddit(subreddit_name)
-                posts = self._get_posts_by_filter(subreddit)
-                
-                subreddit_posts = 0
-                for post in posts:
-                    if subreddit_posts >= limit:
-                        break
-                    
-                    if self._should_process_post(post):
-                        post_data = self._process_post(post, subreddit_name)
-                        if post_data:
-                            posts_data.append(post_data)
-                            subreddit_posts += 1
-                            self.logger.log('INFO', 'Post procesado', 
-                                          post_id=post.id, subreddit=subreddit_name)
+                subreddit_posts = self._fetch_subreddit_posts(subreddit_name)
+                posts_data.extend(subreddit_posts)
                 
                 self.logger.log('INFO', f'Completado subreddit {subreddit_name}', 
-                              posts_found=subreddit_posts)
+                              posts_found=len(subreddit_posts))
                 
             except RedditAPIException as e:
                 self._handle_reddit_error(e, subreddit_name)
@@ -85,114 +67,404 @@ class RedditScraper:
                 self.logger.log('ERROR', 'Error inesperado', subreddit=subreddit_name, error=str(e))
         
         return posts_data
-    
-    def _get_posts_by_filter(self, subreddit):
-        """Obtiene posts según el filtro de tiempo configurado."""
-        time_filter = self.search_params['time_filter']
-        limit = self.search_params['limit'] * 3  # Buffer para filtrado
+
+    def _fetch_subreddit_posts(self, subreddit_name: str) -> List[Dict]:
+        subreddit = self.reddit.subreddit(subreddit_name)
+        limit = self.search_params['limit']
         
-        if time_filter == 'week':
-            return subreddit.top('week', limit=limit)
-        elif time_filter == 'day':
-            return subreddit.top('day', limit=limit)
-        elif time_filter == 'month':
-            return subreddit.top('month', limit=limit)
-        else:
-            return subreddit.hot(limit=limit)
-    
+        # Obtener tipo de posts según configuración o input del usuario
+        posts_generator = self._get_posts_generator(subreddit)
+        
+        posts_data = []
+        for post in posts_generator:
+            if len(posts_data) >= limit:
+                break
+            
+            if self._should_process_post(post):
+                # Si el post cumple los criterios, procesarlo junto a sus updates
+                post_data = self._process_post(post, subreddit_name)
+                if post_data:
+                    posts_data.append(post_data)
+                    self.logger.log('INFO', 'Post procesado', 
+                                  post_id=post.id, subreddit=subreddit_name)
+        
+        return posts_data
+
     def _should_process_post(self, post) -> bool:
-        """Determina si un post debe ser procesado."""
         min_upvotes = self.search_params['min_upvotes']
         
         # Verificar criterios básicos
         if (post.score < min_upvotes or 
-            post.over_18 or 
             not post.selftext.strip()):
             return False
         
-        # Verificar si ya fue procesado (solo si hay DB)
+        # Verificar si ya fue procesado y registrado en la base de datos
         if self.db_manager and self.db_manager.is_processed(post.id):
             return False
         
         return True
     
     def _process_post(self, post, subreddit_name: str) -> Optional[Dict]:
-        """Procesa un post individual."""
         try:
             # Extraer datos básicos del post
             post_data = {
                 'id': post.id,
+                'author': post.author.name if post.author else '[deleted]',
                 'subreddit': subreddit_name,
                 'title': post.title,
                 'text': post.selftext,
                 'upvotes': post.score,
-                'url': f'https://reddit.com{post.permalink}',
-                'created_utc': datetime.utcfromtimestamp(post.created_utc),
+                'url': f'https://www.reddit.com{post.permalink}' if post.permalink else None,
+                'created_utc': datetime.fromtimestamp(post.created_utc, timezone.utc),
                 'is_nsfw': post.over_18,
-                'media': {'type': 'text', 'url': None}
+                'processed_at': datetime.now(timezone.utc)
             }
             
             # Extraer updates del texto
-            updates = self._extract_updates(post.selftext)
-            
-            # Construir narrativa completa
-            post_data['full_narrative'] = self._build_full_narrative(
-                post.title, post.selftext, updates
-            )
-            
+            self.logger.log('INFO', 'Buscando updates', post_id=post.id, author=post_data['author'])
+            updates = self._extract_updates(post)
+
             # Obtener comentarios relevantes
             comments = self._fetch_relevant_comments(post)
             
-            # Guardar en base de datos si está configurada
-            if self.db_manager:
-                success = self.db_manager.save_post_data(post_data, updates, comments)
-                if not success:
-                    self.logger.log('ERROR', 'Error guardando post', post_id=post.id)
-                    return None
-            
-            # Añadir datos extra para el retorno
-            post_data['updates'] = updates
-            post_data['comments_count'] = len(comments)
-            
+            # Guardar en base de datos
+            success = self.db_manager.save_post_data(post_data, updates, comments)
+            if not success:
+                self.logger.log('ERROR', 'Error guardando post', post_id=post.id)
+                return None
+                        
             return post_data
             
         except Exception as e:
             self.logger.log('ERROR', 'Error procesando post', post_id=post.id, error=str(e))
             return None
-    
-    def _extract_updates(self, text: str) -> List[Dict]:
-        """Extrae secciones de updates/edits del texto."""
+
+    # Funciones para extraer updates de los posts mediante varias estrategias
+    def _extract_updates(self, post) -> List[Dict]:
+        all_updates = []
+        
+        try:
+            # Estrategia 1: Updates en comentarios del autor en el post original
+            comment_updates = self._extract_updates_from_author_comments(post)
+            all_updates.extend(comment_updates)
+        
+            # Si el autor del post no ha sido eliminado
+            if post.author:
+                # Estrategia 2: Posts posteriores del autor en el mismo subreddit
+                subreddit_updates = self._find_updates_in_subreddit(post)
+                all_updates.extend(subreddit_updates)
+                
+                # Estrategia 3: Posts del usuario que mencionen el post original
+                profile_updates = self._find_updates_in_user_profile(post)
+                all_updates.extend(profile_updates)
+        
+            # Ordenar updates por fecha y eliminar duplicados
+            unique_updates = self._deduplicate_updates(all_updates)
+            sorted_updates = sorted(unique_updates, key=lambda x: x.get('created_utc', datetime.min.replace(tzinfo=timezone.utc)))
+            
+            if not sorted_updates:
+                self.logger.log('INFO', 'No se encontraron updates para el post', post_id=post.id)
+                return []
+            else:
+                self.logger.log('INFO', 'Updates encontrados para el post', 
+                            post_id=post.id, 
+                            total_updates=len(sorted_updates))
+                
+                return sorted_updates
+                
+        except Exception as e:
+            self.logger.log('ERROR', 'Error en _extract_updates', post_id=post.id, error=str(e))
+            return []
+
+    def _extract_updates_from_author_comments(self, post) -> List[Dict]:
         updates = []
         
-        # Patrón mejorado para capturar updates
-        patterns = [
-            r'(?:EDIT|UPDATE|ACTUALIZACIÓN)[:\s]*([^]*?)(?=(?:EDIT|UPDATE|ACTUALIZACIÓN|\n\n---|\Z))',
-            r'(?:Edit|Update)[:\s]*([^]*?)(?=(?:Edit|Update|\n\n---|\Z))'
-        ]
-        
-        for pattern in patterns:
-            regex = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
-            for match in regex.finditer(text):
-                update_text = match.group(1).strip()
-                if update_text and len(update_text) > 10:  # Filtrar updates muy cortos
-                    updates.append({'text': update_text})
+        try:
+            if not post.author:
+                return updates
+                
+            author_name = post.author.name
+            
+            # Palabras clave que indican updates/edits en comentarios
+            update_keywords = [
+                'update', 'actualización', 'edit', 'edited', 'correction', 
+                'clarification', 'aclaración', 'corrección', 'add', 'adding',
+                'forgot to mention', 'forgot to add', 'también', 'also',
+                'by the way', 'btw', 'oh and', 'one more thing'
+            ]
+            
+            # Configurar comentarios
+            post.comment_sort = 'new'  # Ordenar por fecha para capturar updates cronológicos
+            post.comment_limit = 100   # Límite alto para capturar todos los comentarios del autor
+            
+            # Evitar cargar "more comments" para mejor rendimiento
+            post.comments.replace_more(limit=0)
+            
+            # Obtener todos los comentarios
+            all_comments = post.comments.list()
+            
+            # Filtrar comentarios del autor
+            author_comments = [
+                comment for comment in all_comments 
+                if (hasattr(comment, 'author') and 
+                    comment.author and 
+                    comment.author.name == author_name and
+                    hasattr(comment, 'body') and
+                    comment.body not in ['[deleted]', '[removed]'])
+            ]
+            
+            # Analizar cada comentario del autor
+            for comment in author_comments:
+                comment_text = comment.body.lower()
+                comment_original = comment.body
+                
+                # Verificar si el comentario contiene información de update/edit
+                contains_update_keywords = any(keyword in comment_text for keyword in update_keywords)
+                
+                # Verificar si es un comentario sustancial (no solo respuestas cortas)
+                is_substantial = len(comment_original.strip()) > 50
+                
+                # Verificar si tiene alta interacción (podría indicar información importante)
+                has_interaction = comment.score > 10 if hasattr(comment, 'score') else False
+                
+                # Patrones específicos que indican updates en comentarios
+                update_patterns = [
+                    r'(?:update|actualización)[:\s]*(.{20,})',
+                    r'(?:edit|edited)[:\s]*(.{20,})',
+                    r'(?:forgot to mention|forgot to add|olvidé mencionar)[:\s]*(.{20,})',
+                    r'(?:clarification|aclaración)[:\s]*(.{20,})',
+                    r'(?:correction|corrección)[:\s]*(.{20,})',
+                    r'(?:also|también|by the way|btw)[,\s]*(.{30,})'
+                ]
+                
+                # Buscar patrones específicos de update
+                contains_update_pattern = False
+                for pattern in update_patterns:
+                    if re.search(pattern, comment_text, re.IGNORECASE | re.DOTALL):
+                        contains_update_pattern = True
+                        break
+                
+                # Decidir si el comentario es un update relevante
+                is_update = (
+                    (contains_update_keywords and is_substantial) or
+                    contains_update_pattern or
+                    (is_substantial and has_interaction and 
+                    any(word in comment_text for word in ['update', 'edit', 'actualización']))
+                )
+                
+                if is_update:
+                    updates.append({
+                        'id': comment.id,
+                        'type': 'author_comment',
+                        'text': comment_original,
+                        'source': f'author_comment_{comment.id}',
+                        'created_utc': datetime.fromtimestamp(comment.created_utc, timezone.utc),
+                        'upvotes': getattr(comment, 'score', 0),
+                        'url': f'https://www.reddit.com{post.permalink}{comment.id}/'
+                    })
+                    
+            self.logger.log('INFO', 'Comentarios del autor analizados', 
+                        post_id=post.id, 
+                        total_author_comments=len(author_comments),
+                        update_comments_found=len(updates))
+                    
+        except Exception as e:
+            self.logger.log('WARNING', 'Error buscando updates en comentarios del autor', 
+                        post_id=post.id, error=str(e))
         
         return updates
-    
-    def _build_full_narrative(self, title: str, text: str, updates: List[Dict]) -> str:
-        """Construye la narrativa completa del post."""
-        narrative_parts = [
-            f"TÍTULO: {title}",
-            f"POST ORIGINAL: {text}"
-        ]
+
+    def _find_updates_in_subreddit(self, original_post) -> List[Dict]:
+        """Busca posts del mismo autor en el subreddit que sean updates."""
+        updates = []
         
-        for i, update in enumerate(updates, 1):
-            narrative_parts.append(f"ACTUALIZACIÓN {i}: {update['text']}")
+        try:
+            if not original_post.author:
+                return updates
+                
+            author_name = original_post.author.name
+            subreddit = original_post.subreddit
+            original_created = datetime.fromtimestamp(original_post.created_utc, timezone.utc)
+            
+            # Palabras clave para identificar updates
+            update_keywords = [
+                'update', 'actualización', 'edit', 'follow up', 'followup', 
+                'part 2', 'part two', 'continuation', 'final update'
+            ]
+            
+            # Buscar posts del autor posteriores al original
+            author_posts = list(subreddit.search(f'author:{author_name}', limit=50, sort='new'))
+            
+            for post in author_posts:
+                if (post.id != original_post.id and 
+                    post.created_utc > original_post.created_utc and
+                    post.author and post.author.name == author_name):
+                    
+                    # Verificar si el título o contenido sugiere que es un update
+                    title_lower = post.title.lower()
+                    text_lower = post.selftext.lower() if post.selftext else ""
+                    
+                    # Buscar referencias al post original
+                    original_title_words = set(original_post.title.lower().split())
+                    post_title_words = set(title_lower.split())
+                    title_overlap = len(original_title_words.intersection(post_title_words))
+                    
+                    is_update = (
+                        any(keyword in title_lower for keyword in update_keywords) or
+                        any(keyword in text_lower for keyword in update_keywords) or
+                        original_post.id in text_lower or
+                        title_overlap >= 3  # Títulos similares
+                    )
+                    
+                    if is_update:
+                        updates.append({
+                            'id': post.id,
+                            'type': 'subreddit_post',
+                            'text': f"TÍTULO: {post.title}\n\n{post.selftext}",
+                            'source': f'subreddit_post_{post.id}',
+                            'created_utc': datetime.fromtimestamp(post.created_utc, timezone.utc),
+                            'upvotes': post.score,
+                            'url': f'https://www.reddit.com{post.permalink}'
+                        })
+                        
+        except Exception as e:
+            self.logger.log('WARNING', 'Error buscando updates en subreddit', 
+                        post_id=original_post.id, error=str(e))
         
-        return "\n\n" + "="*50 + "\n\n".join(narrative_parts)
+        return updates
+
+    def _find_updates_in_user_profile(self, original_post) -> List[Dict]:
+        """Busca updates en el perfil del usuario."""
+        updates = []
+        
+        try:
+            if not original_post.author:
+                return updates
+                
+            author = original_post.author
+            original_created = datetime.fromtimestamp(original_post.created_utc, timezone.utc)
+            
+            # Palabras clave más específicas para el perfil
+            update_keywords = [
+                'update', 'actualización', 'follow up', 'followup', 
+                'final update', 'last update', 'conclusion'
+            ]
+            
+            # Obtener posts recientes del usuario
+            user_posts = list(author.submissions.new(limit=25))
+            
+            for post in user_posts:
+                if (post.id != original_post.id and 
+                    post.created_utc > original_post.created_utc):
+                    
+                    title_lower = post.title.lower()
+                    text_lower = post.selftext.lower() if post.selftext else ""
+                    
+                    # Buscar menciones explícitas del post original o palabras clave
+                    is_related_update = (
+                        original_post.id in text_lower or
+                        any(keyword in title_lower for keyword in update_keywords) or
+                        any(keyword in text_lower for keyword in update_keywords[:3])  # Solo las más específicas
+                    )
+                    
+                    # Verificar si menciona el subreddit original
+                    mentions_original_subreddit = original_post.subreddit.display_name.lower() in text_lower
+                    
+                    if is_related_update and (mentions_original_subreddit or original_post.id in text_lower):
+                        updates.append({
+                            'id': post.id,
+                            'type': 'profile_post',
+                            'text': f"TÍTULO: {post.title}\n\nSUBREDDIT: {post.subreddit.display_name}\n\n{post.selftext}",
+                            'source': f'profile_post_{post.id}',
+                            'created_utc': datetime.fromtimestamp(post.created_utc, timezone.utc),
+                            'upvotes': post.score,
+                            'url': f'https://www.reddit.com{post.permalink}'
+                        })
+                        
+        except Exception as e:
+            self.logger.log('WARNING', 'Error buscando updates en perfil', 
+                        post_id=original_post.id, error=str(e))
+        
+        return updates
+
+    def _deduplicate_updates(self, updates: List[Dict]) -> List[Dict]:
+        if not updates:
+            return updates
+            
+        unique_updates = []
+        seen_texts = set()
+        
+        for update in updates:
+            try:
+                # Asegurar que 'text' existe y es string
+                text = update.get('text', '')
+                if not isinstance(text, str):
+                    continue
+                    
+                # Crear una "huella" del texto para detectar duplicados
+                text_fingerprint = re.sub(r'\s+', ' ', text[:200].lower().strip())
+                
+                if text_fingerprint not in seen_texts and len(text_fingerprint) > 20:
+                    seen_texts.add(text_fingerprint)
+                    unique_updates.append(update)
+                    
+            except Exception as e:
+                self.logger.log('DEBUG', 'Error procesando update en deduplicación', error=str(e))
+                continue
+        
+        return unique_updates
     
+    
+    # Funciones para manejar que tipo de posts buscar
+    def _get_posts_generator(self, subreddit):
+        limit = self.search_params['limit']
+        
+        # Si hay configuración específica, usarla directamente
+        if 'post_type' in self.search_params:
+            post_type = self.search_params['post_type']
+        else:
+            # Usar la opción guardada o preguntar una vez
+            if not hasattr(self, '_user_post_type_choice'):
+                self._user_post_type_choice = self._get_user_post_type_choice()
+            post_type = self._user_post_type_choice
+        
+        generators = {
+            'hot': lambda: subreddit.hot(limit=limit * 3),
+            'top': lambda: subreddit.top(
+                time_filter=self.search_params['time_filter'], 
+                limit=limit * 3
+            ),
+            'rising': lambda: subreddit.rising(limit=limit * 4),
+            'controversial': lambda: subreddit.controversial(limit=limit * 3)
+        }
+        
+        return generators.get(post_type, generators['hot'])()
+
+    def _get_user_post_type_choice(self) -> str:
+        options = {
+            '1': 'hot',
+            '2': 'top', 
+            '3': 'rising',
+            '4': 'controversial'
+        }
+        
+        print(f"""
+        Opciones de posts:
+        1. Hot posts
+        2. Top posts ({self.search_params['time_filter']})
+        3. Rising posts
+        4. Controversial posts
+        """)
+        
+        while True:
+            choice = input("Seleccione una opción (1-4): ").strip()
+            if choice in options:
+                return options[choice]
+            self.logger.log('WARNING', 'Opción no válida seleccionada', choice=choice)
+    
+
+    # Funciones para obtener comentarios relevantes de los posts
     def _fetch_relevant_comments(self, post) -> List:
-        """Obtiene comentarios relevantes del post."""
         relevant_comments = []
         
         try:
@@ -200,16 +472,24 @@ class RedditScraper:
             min_upvotes = self.search_params.get('min_comment_upvotes', 100)
             max_length = self.search_params.get('max_comment_length', 500)
             
+            # Obtener el nombre del autor del post
+            post_author = post.author.name if post.author else None
+            
             # Configurar ordenamiento de comentarios
             post.comment_sort = 'top'
-            post.comment_limit = min(20, comment_limit * 3)  # Buffer para filtrado
+            post.comment_limit = comment_limit * 3  # Buffer para filtrado
             
             # Evitar cargar "more comments"
             post.comments.replace_more(limit=0)
             comments = post.comments.list()
             
             for comment in comments:
-                if self._is_valid_comment(comment, min_upvotes, max_length):
+                # Verificar que el comentario no sea del autor del post
+                comment_author = comment.author.name if comment.author else None
+                is_not_post_author = comment_author != post_author
+                
+                if (is_not_post_author and 
+                    self._is_valid_comment(comment, min_upvotes, max_length)):
                     relevant_comments.append(comment)
                     if len(relevant_comments) >= comment_limit:
                         break
@@ -221,22 +501,38 @@ class RedditScraper:
         return relevant_comments
     
     def _is_valid_comment(self, comment, min_upvotes: int, max_length: int) -> bool:
-        """Valida si un comentario cumple los criterios."""
         try:
-            return (
-                hasattr(comment, 'score') and
-                hasattr(comment, 'body') and
-                comment.score >= min_upvotes and
-                len(comment.body) <= max_length and
-                comment.body not in ['[deleted]', '[removed]'] and
-                not getattr(comment, 'stickied', False) and
-                comment.body.strip() != ''
-            )
-        except:
+            # Verificaciones básicas de estructura
+            if not (hasattr(comment, 'score') and hasattr(comment, 'body')):
+                return False
+                
+            # Verificaciones de contenido
+            if (comment.body in ['[deleted]', '[removed]'] or 
+                not comment.body.strip()):
+                return False
+                
+            # Verificaciones de calidad
+            if (comment.score < min_upvotes or 
+                len(comment.body) > max_length):
+                return False
+                
+            # Excluir comentarios oficiales/automáticos
+            if getattr(comment, 'stickied', False):
+                return False
+                
+            # Opcional: Filtrar comentarios muy cortos
+            if len(comment.body.strip()) < 10:
+                return False
+                
+            return True
+            
+        except Exception as e:
+            self.logger.log('DEBUG', 'Error validando comentario', error=str(e))
             return False
     
+    
+    # Maneja el time out y errores de Reddit API
     def _handle_reddit_error(self, error: RedditAPIException, subreddit: str):
-        """Maneja errores específicos de la API de Reddit."""
         error_str = str(error).upper()
         
         if "RATELIMIT" in error_str:

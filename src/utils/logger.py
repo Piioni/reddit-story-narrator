@@ -2,7 +2,6 @@ import logging
 import json
 import os
 from datetime import datetime
-from typing import Dict, Any
 
 class StructuredLogger:
     def __init__(self, name: str, log_dir: str = 'logs'):
