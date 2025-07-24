@@ -37,8 +37,6 @@ class RedditScraper:
 
         # Configurar logger
         self.logger = StructuredLogger('RedditScraper')
-
-        self.db_config = db_config 
         
          # Configurar Database
         db_config_obj = DatabaseConfig(**db_config)
@@ -53,27 +51,27 @@ class RedditScraper:
         # Recorrer cada subreddit y obtener posts
         for subreddit_name in self.subreddits:
             try:
-                self.logger.log('INFO', 'Scrapeando subreddit', subreddit=subreddit_name)
+                self.logger.info('Scrapeando subreddit', subreddit=subreddit_name)
                 subreddit_posts = self._fetch_subreddit_posts(subreddit_name)
                 posts_data.extend(subreddit_posts)
-                
-                self.logger.log('INFO', f'Completado subreddit {subreddit_name}', 
+
+                self.logger.info(f'Completado subreddit {subreddit_name}', 
                               posts_found=len(subreddit_posts))
                 
             except RedditAPIException as e:
                 self._handle_reddit_error(e, subreddit_name)
             except PRAWException as e:
-                self.logger.log('ERROR', 'Error de PRAW', subreddit=subreddit_name, error=str(e))
+                self.logger.error('Error de PRAW', subreddit=subreddit_name, error=str(e))
             except Exception as e:
-                self.logger.log('ERROR', 'Error inesperado', subreddit=subreddit_name, error=str(e))
-        
+                self.logger.error('Error inesperado', subreddit=subreddit_name, error=str(e))
+
         return posts_data
 
     def _fetch_subreddit_posts(self, subreddit_name: str) -> List[Dict]:
         subreddit = self.reddit.subreddit(subreddit_name)
         limit = self.search_params['limit']
         
-        # Obtener tipo de posts según configuración o input del usuario
+        # Obtener tipo de posts según configuración
         posts_generator = self._get_posts_generator(subreddit)
         
         posts_data = []
@@ -86,7 +84,7 @@ class RedditScraper:
                 post_data = self._process_post(post, subreddit_name)
                 if post_data:
                     posts_data.append(post_data)
-                    self.logger.log('INFO', 'Post procesado', 
+                    self.logger.info('Post procesado', 
                                   post_id=post.id, subreddit=subreddit_name)
         
         return posts_data
@@ -121,23 +119,21 @@ class RedditScraper:
             }
             
             # Extraer updates del texto
-            self.logger.log('INFO', 'Buscando updates', post_id=post.id, author=post_data['author'])
             updates = self._extract_updates(post)
 
             # Obtener comentarios relevantes
-            self.logger.log('INFO', 'Buscando comentarios relevantes', post_id=post.id, author=post_data['author'])
             comments = self._fetch_relevant_comments(post)
             
             # Guardar en base de datos
             success = self.db_manager.save_post_data(post_data, updates, comments)
             if not success:
-                self.logger.log('ERROR', 'Error guardando post', post_id=post.id)
+                self.logger.error('Error guardando post', post_id=post.id)
                 return None
                         
             return post_data
             
         except Exception as e:
-            self.logger.log('ERROR', 'Error procesando post', post_id=post.id, error=str(e))
+            self.logger.error('Error procesando post', post_id=post.id, error=str(e))
             return None
 
 
@@ -164,18 +160,15 @@ class RedditScraper:
             unique_updates = self._deduplicate_updates(all_updates)
             sorted_updates = sorted(unique_updates, key=lambda x: x.get('created_utc', datetime.min.replace(tzinfo=timezone.utc)))
             
-            if not sorted_updates:
-                self.logger.log('INFO', 'No se encontraron updates para el post', post_id=post.id)
-                return []
-            else:
-                self.logger.log('INFO', 'Updates encontrados para el post', 
+            if sorted_updates:
+                self.logger.info('Updates encontrados para el post', 
                             post_id=post.id, 
                             total_updates=len(sorted_updates))
                 
-                return sorted_updates
+            return sorted_updates
                 
         except Exception as e:
-            self.logger.log('ERROR', 'Error en _extract_updates', post_id=post.id, error=str(e))
+            self.logger.error('Error en _extract_updates', post_id=post.id, error=str(e))
             return []
 
     def _extract_updates_from_author_comments(self, post) -> List[Dict]:
@@ -197,7 +190,7 @@ class RedditScraper:
             
             # Configurar comentarios
             post.comment_sort = 'new'  # Ordenar por fecha para capturar updates cronológicos
-            post.comment_limit = 50   # Límite alto para capturar todos los comentarios del autor
+            post.comment_limit = 25   # Límite alto para capturar todos los comentarios del autor
             
             # Evitar cargar "more comments" para mejor rendimiento
             post.comments.replace_more(limit=0)
@@ -256,7 +249,7 @@ class RedditScraper:
                 
                 if is_update:
                     updates.append({
-                        'id': comment.id,
+                        'update_id': comment.id,
                         'post_id': post.id,
                         'type': 'author_comment',
                         'update_text': comment_original,
@@ -264,14 +257,9 @@ class RedditScraper:
                         'upvotes': getattr(comment, 'score', 0),
                         'url': f'https://www.reddit.com{post.permalink}{comment.id}/'
                     })
-                    
-            self.logger.log('INFO', 'Comentarios del autor analizados', 
-                        post_id=post.id, 
-                        total_author_comments=len(author_comments),
-                        update_comments_found=len(updates))
-                    
+
         except Exception as e:
-            self.logger.log('WARNING', 'Error buscando updates en comentarios del autor', 
+            self.logger.warning('Error buscando updates en comentarios del autor', 
                         post_id=post.id, error=str(e))
         
         return updates
@@ -321,17 +309,17 @@ class RedditScraper:
                     
                     if is_update:
                         updates.append({
-                            'id': post.id,
+                            'update_id': post.id,
                             'post_id': original_post.id,
                             'type': 'subreddit_post',
-                            'text': f"TÍTULO: {post.title}\n\n{post.selftext}",
+                            'update_text': f"TÍTULO: {post.title}\n\n{post.selftext}",
                             'created_utc': update_submitted_time,
                             'upvotes': post.score,
                             'url': f'https://www.reddit.com{post.permalink}'
                         })
                         
         except Exception as e:
-            self.logger.log('WARNING', 'Error buscando updates en subreddit', 
+            self.logger.warning('Error buscando updates en subreddit', 
                         post_id=original_post.id, error=str(e))
         
         return updates
@@ -376,17 +364,17 @@ class RedditScraper:
                     
                     if is_related_update and (mentions_original_subreddit or original_post.id in text_lower):
                         updates.append({
-                            'id': post.id,
+                            'update_id': post.id,
+                            'post_id': original_post.id,
                             'type': 'profile_post',
-                            'text': f"TÍTULO: {post.title}\n\nSUBREDDIT: {post.subreddit.display_name}\n\n{post.selftext}",
-                            'source': f'profile_post_{post.id}',
+                            'update_text': f"TÍTULO: {post.title}\n\nSUBREDDIT: {post.subreddit.display_name}\n\n{post.selftext}",
                             'created_utc': update_submitted_time,
                             'upvotes': post.score,
                             'url': f'https://www.reddit.com{post.permalink}'
                         })
                         
         except Exception as e:
-            self.logger.log('WARNING', 'Error buscando updates en perfil', 
+            self.logger.warning('Error buscando updates en perfil', 
                         post_id=original_post.id, error=str(e))
         
         return updates
@@ -394,56 +382,37 @@ class RedditScraper:
     def _deduplicate_updates(self, updates: List[Dict]) -> List[Dict]:
         if not updates:
             return updates
-        
-        self.logger.log('INFO', 'Iniciando deduplicación de updates', total_updates=len(updates))
+
         unique_updates = []
         seen_hashes = set()
-        duplicates_found = 0
-        short_content_skipped = 0
         
         for update in updates:
             try:
                 # Obtener texto del update
                 text = update.get('update_text', update.get('text', ''))
-                update_id = update.get('id', 'unknown')
+                update_id = update.get('update_id', 'unknown')
                 
                 if not isinstance(text, str) or len(text.strip()) < 20:
-                    short_content_skipped += 1
-                    self.logger.log('DEBUG', 'Update omitido por contenido muy corto', 
-                                  update_id=update_id, content_length=len(text.strip()) if isinstance(text, str) else 0)
                     continue
                 
                 # Crear hash único del contenido normalizado
                 content_hash = self._create_content_hash(text)
                 
-                if not content_hash:
-                    self.logger.log('DEBUG', 'No se pudo generar hash para update', update_id=update_id)
+                if not content_hash or content_hash in seen_hashes:
                     continue
                 
-                if content_hash in seen_hashes:
-                    duplicates_found += 1
-                    self.logger.log('INFO', 'Update duplicado encontrado y descartado', 
-                                  update_id=update_id, 
-                                  content_hash=content_hash[:8],
-                                  update_type=update.get('type', 'unknown'))
-                else:
-                    seen_hashes.add(content_hash)
-                    unique_updates.append(update)
-                    self.logger.log('DEBUG', 'Update único agregado', 
-                                  update_id=update_id, 
-                                  content_hash=content_hash[:8],
-                                  update_type=update.get('type', 'unknown'))
+                seen_hashes.add(content_hash)
+                unique_updates.append(update)
                     
             except Exception as e:
-                self.logger.log('WARNING', 'Error procesando update en deduplicación', 
-                              update_id=update.get('id', 'unknown'), error=str(e))
+                self.logger.warning('Error procesando update en deduplicación', 
+                              update_id=update.get('update_id', 'unknown'), error=str(e))
                 continue
-        
-        self.logger.log('INFO', 'Deduplicación completada', 
-                      original_count=len(updates),
-                      unique_count=len(unique_updates),
-                      duplicates_removed=duplicates_found,
-                      short_content_skipped=short_content_skipped)
+
+        if len(updates) != len(unique_updates):
+            self.logger.info('Updates deduplicados', 
+                          original_count=len(updates),
+                          unique_count=len(unique_updates))
         
         return unique_updates
 
@@ -472,58 +441,10 @@ class RedditScraper:
             return hashlib.md5(content_for_hash.encode('utf-8')).hexdigest()
             
         except Exception as e:
-            self.logger.log('DEBUG', 'Error generando hash de contenido', error=str(e))
+            self.logger.warning('Error generando hash de contenido', error=str(e))
             return None
 
-
-    # Funciones para manejar que tipo de posts buscar
-    def _get_posts_generator(self, subreddit):
-        limit = self.search_params['limit']
-        
-        # Si hay configuración específica, usarla directamente
-        if 'post_type' in self.search_params:
-            post_type = self.search_params['post_type']
-        else:
-            # Usar la opción guardada o preguntar una vez
-            if not hasattr(self, '_user_post_type_choice'):
-                self._user_post_type_choice = self._get_user_post_type_choice()
-            post_type = self._user_post_type_choice
-        
-        generators = {
-            'hot': lambda: subreddit.hot(limit=limit * 3),
-            'top': lambda: subreddit.top(
-                time_filter=self.search_params['time_filter'], 
-                limit=limit * 3
-            ),
-            'rising': lambda: subreddit.rising(limit=limit * 4),
-            'controversial': lambda: subreddit.controversial(limit=limit * 3)
-        }
-        
-        return generators.get(post_type, generators['hot'])()
-
-    def _get_user_post_type_choice(self) -> str:
-        options = {
-            '1': 'hot',
-            '2': 'top', 
-            '3': 'rising',
-            '4': 'controversial'
-        }
-        
-        print(f"""
-        Opciones de posts:
-        1. Hot posts
-        2. Top posts ({self.search_params['time_filter']})
-        3. Rising posts
-        4. Controversial posts
-        """)
-        
-        while True:
-            choice = input("Seleccione una opción (1-4): ").strip()
-            if choice in options:
-                return options[choice]
-            self.logger.log('WARNING', 'Opción no válida seleccionada', choice=choice)
-    
-
+    # TODO: Implementar una verificacion que determine si el comentario fue respondido por el autor del post e incluirlo dentro del mismo comentario
     # Funciones para obtener comentarios relevantes de los posts
     def _fetch_relevant_comments(self, post) -> List:
         relevant_comments = []
@@ -531,7 +452,7 @@ class RedditScraper:
         try:
             comment_limit = self.search_params.get('comment_limit', 2)
             min_upvotes = self.search_params.get('min_comment_upvotes', 100)
-            max_length = self.search_params.get('max_comment_length', 500)
+            max_length = self.search_params.get('max_comment_length', 288)
             
             # Obtener el nombre del autor del post
             post_author = post.author.name if post.author else None
@@ -556,7 +477,7 @@ class RedditScraper:
                         break
             
         except Exception as e:
-            self.logger.log('ERROR', 'Error obteniendo comentarios', 
+            self.logger.error('Error obteniendo comentarios', 
                           post_id=post.id, error=str(e))
         
         return relevant_comments
@@ -588,7 +509,7 @@ class RedditScraper:
             return True
             
         except Exception as e:
-            self.logger.log('DEBUG', 'Error validando comentario', error=str(e))
+            self.logger.warning('Error validando comentario', error=str(e))
             return False
     
     
@@ -604,21 +525,40 @@ class RedditScraper:
             else:
                 wait_time_match = re.search(r'(\d+)\s*SECOND', error_str)
                 wait_time = int(wait_time_match.group(1)) if wait_time_match else 60
-            
-            self.logger.log('WARNING', 'Rate limit alcanzado', 
-                          subreddit=subreddit, wait_time=wait_time)
+
+            self.logger.warning('Rate limit alcanzado',
+                                subreddit=subreddit, wait_time=wait_time)
             time.sleep(wait_time + 2)
             
         elif "FORBIDDEN" in error_str:
-            self.logger.log('ERROR', 'Acceso prohibido al subreddit', subreddit=subreddit)
+            self.logger.error('Acceso prohibido al subreddit', subreddit=subreddit)
         elif "NOT_FOUND" in error_str:
-            self.logger.log('ERROR', 'Subreddit no encontrado', subreddit=subreddit)
+            self.logger.error('Subreddit no encontrado', subreddit=subreddit)
         else:
-            self.logger.log('ERROR', 'Error de Reddit API', 
+            self.logger.error('Error de Reddit API',
                           subreddit=subreddit, error=str(error))
+
+    # Funciones para manejar que tipo de posts buscar
+    def _get_posts_generator(self, subreddit):
+        limit = self.search_params['limit']
+        
+        # Usar configuración directa (sin input del usuario)
+        post_type = self.search_params.get('post_type', 'hot')
+        
+        generators = {
+            'hot': lambda: subreddit.hot(limit=limit * 3),
+            'top': lambda: subreddit.top(
+                time_filter=self.search_params['time_filter'], 
+                limit=limit * 3
+            ),
+            'rising': lambda: subreddit.rising(limit=limit * 4),
+            'controversial': lambda: subreddit.controversial(limit=limit * 3)
+        }
+        
+        return generators.get(post_type, generators['hot'])()
     
+
     def close(self):
-        """Libera recursos y cierra conexiones."""
         if self.db_manager:
             self.db_manager.close()
-        self.logger.log('INFO', 'Scraper cerrado correctamente')
+        self.logger.info('Scraper cerrado correctamente')

@@ -18,46 +18,16 @@ class SchemaMigrator:
         # 🎯 Migraciones de schema organizadas por versión
         self.migrations = {
             'v1.1.0': {
-                'description': 'Agregar columnas de análisis de sentimientos',
+                'description': '',
                 'migrations': [
                     {
-                        'table': 'posts',
+                        'table': '',
                         'changes': [
-                            "ALTER TABLE posts ADD COLUMN IF NOT EXISTS sentiment_score FLOAT",
-                            "ALTER TABLE posts ADD COLUMN IF NOT EXISTS category_tags TEXT[]",
-                            "ALTER TABLE posts ADD COLUMN IF NOT EXISTS word_count INTEGER DEFAULT 0"
-                        ]
-                    },
-                    {
-                        'table': 'comments',
-                        'changes': [
-                            "ALTER TABLE comments ADD COLUMN IF NOT EXISTS sentiment_score FLOAT"
+                            
                         ]
                     }
                 ]
             },
-            'v1.2.0': {
-                'description': 'Agregar tabla de análisis de texto',
-                'migrations': [
-                    {
-                        'table': 'text_analysis',
-                        'changes': [
-                            """
-                            CREATE TABLE IF NOT EXISTS text_analysis (
-                                id SERIAL PRIMARY KEY,
-                                post_id TEXT NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
-                                keywords TEXT[],
-                                topics TEXT[],
-                                readability_score FLOAT,
-                                language TEXT DEFAULT 'en',
-                                analyzed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                            )
-                            """,
-                            "CREATE INDEX IF NOT EXISTS idx_text_analysis_post_id ON text_analysis(post_id)"
-                        ]
-                    }
-                ]
-            }
         }
     
     def _get_db_connection(self, database_name):

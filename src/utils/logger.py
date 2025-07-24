@@ -16,9 +16,7 @@ class StructuredLogger:
         if not self.logger.handlers:
             self._setup_handlers(log_dir)
     
-    def _setup_handlers(self, log_dir: str):
-        """Configura los handlers de logging."""
-        
+    def _setup_handlers(self, log_dir: str):      
         # Formatter para logs estructurados
         json_formatter = logging.Formatter('%(message)s')
         
@@ -44,14 +42,6 @@ class StructuredLogger:
         self.logger.addHandler(console_handler)
     
     def log(self, level: str, message: str, **kwargs):
-        """
-        Registra un mensaje con datos estructurados.
-        
-        Args:
-            level: Nivel del log (INFO, WARNING, ERROR, etc.)
-            message: Mensaje principal
-            **kwargs: Datos adicionales estructurados
-        """
         # Crear entrada de log estructurada
         log_entry = {
             'timestamp': datetime.utcnow().isoformat(),
@@ -106,13 +96,10 @@ class StructuredLogger:
                 )
     
     def info(self, message: str, **kwargs):
-        """Método de conveniencia para logs INFO."""
         self.log('INFO', message, **kwargs)
     
     def warning(self, message: str, **kwargs):
-        """Método de conveniencia para logs WARNING."""
         self.log('WARNING', message, **kwargs)
     
     def error(self, message: str, **kwargs):
-        """Método de conveniencia para logs ERROR."""
         self.log('ERROR', message, **kwargs)
