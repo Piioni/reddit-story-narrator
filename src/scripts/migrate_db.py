@@ -21,6 +21,7 @@ class DatabaseMigrator:
             'legal_stories': ['legaladvice', 'bestoflegaladvice'],
             'work_stories': ['antiwork', 'MaliciousCompliance', 'pettyrevenge'],
             'tech_stories': ['programming', 'webdev', 'learnprogramming'],
+            'creepypastas': ['creepy', 'creepypasta'],
         }
     
     def wait_for_postgres(self, max_retries=10, delay=3):
