@@ -209,7 +209,8 @@ class DatabaseMigrator:
             url TEXT,
             created_utc TIMESTAMP NOT NULL,
             is_nsfw BOOLEAN DEFAULT FALSE,
-            processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT DEFAULT 'unprocessed'
         );
 
         -- Tabla de updates/edits de posts

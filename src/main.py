@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 from scraper import RedditScraper
-from utils.logger import StructuredLogger
+from utils import StructuredLogger
 import psycopg2
 
 class RedditScrapperApp:
