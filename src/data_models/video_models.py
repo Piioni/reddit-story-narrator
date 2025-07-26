@@ -30,8 +30,6 @@ class ProcessedContent:
     word_count: int
     segments: List[str]
     metadata: Dict
-    is_suitable: bool
-    processing_notes: List[str]
 
 @dataclass
 class VideoSegment:

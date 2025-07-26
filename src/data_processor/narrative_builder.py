@@ -3,32 +3,13 @@ from typing import Dict, List, Optional
 from data_models.video_models import RedditPost, ProcessedContent
 from utils.logger import StructuredLogger
 
-class NarrativeBuilder:
-    """Builds clean narratives from Reddit content for TTS processing."""
-    
+class NarrativeBuilder:    
     def __init__(self, max_duration: int = 3600, words_per_minute: int = 150):
-        """
-        Initialize the narrative builder.
-        
-        Args:
-            max_duration: Maximum video duration in seconds (default: 60 min)
-            words_per_minute: Average speaking speed for duration estimation
-        """
         self.max_duration = max_duration
         self.words_per_minute = words_per_minute
         self.logger = StructuredLogger('NarrativeBuilder')
     
     def build_narrative(self, reddit_post: RedditPost, category: str) -> Optional[ProcessedContent]:
-        """
-        Build simple narrative: Title + Post + Comments + Updates
-        
-        Args:
-            reddit_post: Reddit post with updates and comments
-            category: Content category
-            
-        Returns:
-            ProcessedContent ready for TTS processing
-        """
         try:
             narrative_parts = []
             
@@ -62,11 +43,6 @@ class NarrativeBuilder:
             # Split into segments for TTS processing
             segments = self._create_segments(narrative_text)
             
-            # Validate content
-            is_suitable, notes = self._validate_content(
-                reddit_post, estimated_duration, word_count
-            )
-            
             return ProcessedContent(
                 post_id=reddit_post.post_id,
                 original_title=reddit_post.title,
@@ -82,9 +58,7 @@ class NarrativeBuilder:
                     'upvotes': reddit_post.upvotes,
                     'updates_count': len(reddit_post.updates),
                     'comments_count': len(reddit_post.comments)
-                },
-                is_suitable=is_suitable,
-                processing_notes=notes
+                }
             )
             
         except Exception as e:
@@ -93,7 +67,6 @@ class NarrativeBuilder:
             return None
     
     def _process_updates(self, updates: List[Dict]) -> List[str]:
-        """Process updates in chronological order."""
         update_texts = []
         
         for update in updates:
@@ -106,7 +79,6 @@ class NarrativeBuilder:
         return update_texts
     
     def _process_comments(self, comments: List[Dict]) -> List[str]:
-        """Process top comments."""
         comment_texts = []
         
         # Take top 3 comments by upvotes
@@ -122,7 +94,6 @@ class NarrativeBuilder:
         return comment_texts
     
     def _clean_text(self, text: str) -> str:
-        """Clean and normalize text for TTS processing."""
         if not text:
             return ""
         
@@ -136,10 +107,6 @@ class NarrativeBuilder:
         text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
         text = re.sub(r'http[s]?://[^\s]+', '', text)
         
-        # Remove Reddit user/subreddit mentions
-        text = re.sub(r'u/\w+', '', text)
-        text = re.sub(r'r/\w+', '', text)
-        
         # Remove special characters that cause TTS issues
         text = re.sub(r'[^\w\s\.,!?\-\']', ' ', text)
         
@@ -147,9 +114,8 @@ class NarrativeBuilder:
         text = re.sub(r'\s+', ' ', text).strip()
         
         return text
-    
-    def _create_segments(self, text: str, max_words_per_segment: int = 50) -> List[str]:
-        """Split text into segments for TTS processing."""
+
+    def _create_segments(self, text: str, max_words_per_segment: int = 100) -> List[str]:
         if not text:
             return []
         
@@ -190,41 +156,3 @@ class NarrativeBuilder:
         
         return segments
     
-    def _validate_content(self, reddit_post: RedditPost, duration: float, 
-                         word_count: int) -> tuple[bool, List[str]]:
-        """Validate if content is suitable for TTS processing."""
-        notes = []
-        is_suitable = True
-        
-        # Duration check
-        if duration > self.max_duration:
-            is_suitable = False
-            notes.append(f"Duration too long: {duration/60:.1f} min")
-        
-        # NSFW check
-        if reddit_post.is_nsfw:
-            is_suitable = False
-            notes.append("Content marked as NSFW")
-        
-        # Content quality check
-        if word_count < 50:
-            is_suitable = False
-            notes.append("Content too short for video")
-        
-        # Check for empty or deleted content
-        if not reddit_post.text or reddit_post.text.lower() in ['[deleted]', '[removed]']:
-            if not reddit_post.comments and not reddit_post.updates:
-                is_suitable = False
-                notes.append("No substantial content available")
-        
-        # Problematic content check
-        problematic_terms = ['suicide', 'self-harm', 'rape', 'abuse', 'kill myself']
-        full_text = f"{reddit_post.title} {reddit_post.text}".lower()
-        if any(term in full_text for term in problematic_terms):
-            is_suitable = False
-            notes.append("Contains sensitive content")
-        
-        if is_suitable:
-            notes.append(f"Content approved ({duration/60:.1f} minutes, {word_count} words)")
-        
-        return is_suitable, notes

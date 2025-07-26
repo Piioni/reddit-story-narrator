@@ -1,5 +1,5 @@
 import re
-from typing import Dict, List
+from typing import Dict
 from data_models.video_models import ProcessedContent
 from utils.logger import StructuredLogger
 
@@ -32,7 +32,10 @@ class TextOptimizer:
             'OP': 'Original Poster',
             'DH': 'Dear Husband',
             'DW': 'Dear Wife',
-            'LTR': 'Long Term Relationship'
+            'LTR': 'Long Term Relationship',
+            'RAPE': 'Sexual Assault',
+            'RAPED': 'Sexually Assaulted',
+            'SUICIDE': 'Taking one\'s own life'
         }
         
         # Number to word conversions for better TTS
@@ -42,15 +45,6 @@ class TextOptimizer:
         }
     
     def optimize_content(self, content: ProcessedContent) -> ProcessedContent:
-        """
-        Optimize processed content for TTS synthesis.
-        
-        Args:
-            content: ProcessedContent with narrative text
-            
-        Returns:
-            ProcessedContent with optimized text for TTS
-        """
         try:
             # Optimize main narrative
             optimized_narrative = self._optimize_text(content.narrative_text)
@@ -84,7 +78,6 @@ class TextOptimizer:
             return content
     
     def _optimize_text(self, text: str) -> str:
-        """Core text optimization for TTS."""
         if not text:
             return ""
         
@@ -109,7 +102,6 @@ class TextOptimizer:
         return text.strip()
     
     def _replace_abbreviations(self, text: str) -> str:
-        """Replace Reddit abbreviations with full forms."""
         for abbrev, full_form in self.abbreviations.items():
             # Use word boundaries to avoid partial replacements
             pattern = r'\b' + re.escape(abbrev) + r'\b'
@@ -118,16 +110,14 @@ class TextOptimizer:
         return text
     
     def _normalize_numbers(self, text: str) -> str:
-        """Normalize numbers for better TTS pronunciation."""
         # Replace standalone single digits with words
         for digit, word in self.number_words.items():
             pattern = r'\b' + digit + r'\b'
             text = re.sub(pattern, word, text)
-        
-        # Handle ages more naturally (25M -> 25 year old male)
-        text = re.sub(r'\b(\d{1,2})[Mm]\b', r'\1 year old male', text)
-        text = re.sub(r'\b(\d{1,2})[Ff]\b', r'\1 year old female', text)
-        
+        # Handle ages more naturally (25M -> 25 male)
+        text = re.sub(r'\b(\d{1,2})[Mm]\b', r'\1 male', text)
+        text = re.sub(r'\b(\d{1,2})[Ff]\b', r'\1 female', text)
+
         # Handle money amounts
         text = re.sub(r'\$(\d+)k\b', r'\1 thousand dollars', text, flags=re.IGNORECASE)
         text = re.sub(r'\$(\d+)K\b', r'\1 thousand dollars', text)
@@ -140,7 +130,6 @@ class TextOptimizer:
         return text
     
     def _fix_contractions(self, text: str) -> str:
-        """Fix contractions that cause TTS issues."""
         contractions = {
             "won't": "will not",
             "can't": "cannot",
@@ -167,13 +156,10 @@ class TextOptimizer:
         return text
     
     def _fix_pronunciation(self, text: str) -> str:
-        """Fix common pronunciation issues for TTS."""
         # Common internet slang and abbreviations
         replacements = {
             r'\bOMG\b': 'Oh my god',
             r'\bWTF\b': 'What the heck',
-            r'\bLOL\b': 'Laughing out loud',
-            r'\bLMAO\b': 'Laughing my butt off',
             r'\bROFL\b': 'Rolling on the floor laughing',
             r'\bIKR\b': 'I know right',
             r'\bTBF\b': 'To be fair',
@@ -206,13 +192,21 @@ class TextOptimizer:
         return text
     
     def _add_natural_pauses(self, text: str) -> str:
-        """Add natural pauses for better TTS flow."""
         # Add comma after introductory phrases if not already present
         intro_phrases = [
             'So basically', 'Long story short', 'To make things worse',
             'Here\'s the thing', 'The problem is', 'What happened was',
             'To be honest', 'To be fair', 'At the end of the day',
-            'All things considered', 'On the other hand'
+            'All things considered', 'On the other hand', 'First off',
+            'Let me start by saying', 'For context', 'For what it\'s worth',
+            'In any case', 'Bottom line', 'The thing is', 'Basically',
+            'Honestly', 'Frankly', 'Obviously', 'Clearly', 'Apparently',
+            'Surprisingly', 'Interestingly', 'Unfortunately', 'Fortunately',
+            'In the beginning', 'Initially', 'Originally', 'At first',
+            'Looking back', 'In hindsight', 'In summary', 'In conclusion',
+            'As a result', 'Consequently', 'In other words', 'That said',
+            'In fact', 'Actually', 'Essentially', 'Ultimately',
+            'For starters', 'To begin with', 'Moving on', 'Anyway'
         ]
         
         for phrase in intro_phrases:
@@ -230,7 +224,6 @@ class TextOptimizer:
         return text
     
     def _final_cleanup(self, text: str) -> str:
-        """Final cleanup and normalization."""
         # Fix multiple punctuation
         text = re.sub(r'[.]{2,}', '.', text)
         text = re.sub(r'[!]{2,}', '!', text)
@@ -251,7 +244,6 @@ class TextOptimizer:
         return text.strip()
     
     def get_optimization_stats(self, original_text: str, optimized_text: str) -> Dict[str, int]:
-        """Get statistics about the optimization process."""
         return {
             'original_words': len(original_text.split()) if original_text else 0,
             'optimized_words': len(optimized_text.split()) if optimized_text else 0,
