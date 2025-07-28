@@ -1,3 +1,5 @@
 praw
 psycopg2-binary
 dotenv
+azure-cognitiveservices-speech
+librosa

@@ -11,37 +11,35 @@ class NarrativeBuilder:
     
     def build_narrative(self, reddit_post: RedditPost, category: str) -> Optional[ProcessedContent]:
         try:
-            narrative_parts = []
+            segments = []
             
-            # 1. Original title
+            # 1. Título con contexto de usuario
             clean_title = self._clean_text(reddit_post.title)
             if clean_title:
-                narrative_parts.append(clean_title)
+                title_segment = f"{clean_title}. Posted by u/{reddit_post.author}"
+                segments.append(title_segment)
             
-            # 2. Main post content
+            # 2. Contenido principal del post
             clean_text = self._clean_text(reddit_post.text)
             if clean_text:
-                narrative_parts.append(clean_text)
+                segments.append(clean_text)
             
-            # 3. Updates (chronological order)
+            # 3. Updates con contexto temporal
             if reddit_post.updates:
-                update_texts = self._process_updates(reddit_post.updates)
-                narrative_parts.extend(update_texts)
+                update_segments = self._process_updates_with_context(reddit_post.updates)
+                segments.extend(update_segments)
             
-            # 4. Comments
+            # 4. Comentarios relevantes con introducción
             if reddit_post.comments:
-                comment_texts = self._process_comments(reddit_post.comments)
-                narrative_parts.extend(comment_texts)
+                comment_segments = self._process_comments_with_context(reddit_post.comments)
+                segments.extend(comment_segments)
             
-            # Join all parts
-            narrative_text = " ".join(narrative_parts)
+            # Crear texto narrativo completo para métricas
+            narrative_text = " ".join(segments)
             
             # Calculate metrics
             word_count = len(narrative_text.split())
             estimated_duration = (word_count / self.words_per_minute) * 60
-            
-            # Split into segments for TTS processing
-            segments = self._create_segments(narrative_text)
             
             return ProcessedContent(
                 post_id=reddit_post.post_id,
@@ -51,7 +49,7 @@ class NarrativeBuilder:
                 optimized_text="",  # Will be filled by TextOptimizer
                 estimated_duration=estimated_duration,
                 word_count=word_count,
-                segments=segments,
+                segments=segments,  # ✅ Segmentos con contexto narrativo
                 metadata={
                     'author': reddit_post.author,
                     'subreddit': reddit_post.subreddit,
@@ -60,39 +58,68 @@ class NarrativeBuilder:
                     'comments_count': len(reddit_post.comments)
                 }
             )
-            
+        
         except Exception as e:
             self.logger.error("Error building narrative", 
                             post_id=reddit_post.post_id, error=str(e))
             return None
     
-    def _process_updates(self, updates: List[Dict]) -> List[str]:
-        update_texts = []
+    def _process_updates_with_context(self, updates: List[Dict]) -> List[str]:
+        segments = []
         
-        for update in updates:
+        for i, update in enumerate(updates):
             update_text = update.get('text', '')
             if update_text and len(update_text.strip()) > 10:
                 clean_update = self._clean_text(update_text)
                 if clean_update:
-                    update_texts.append(clean_update)
+                    # ✅ Contexto temporal para updates
+                    time_context = self._get_update_time_context(update, i)
+                    update_segment = f"Update {time_context}. {clean_update}"
+                    segments.append(update_segment)
         
-        return update_texts
-    
-    def _process_comments(self, comments: List[Dict]) -> List[str]:
-        comment_texts = []
+        return segments
+
+    def _get_update_time_context(self, update: Dict, index: int) -> str:
+        # Si hay timestamp específico en el update
+        if 'timestamp' in update:
+            # Aquí podrías calcular "2 hours later", "next day", etc.
+            # Por simplicidad, usaremos índices
+            pass
         
-        # Take top 3 comments by upvotes
-        valid_comments = [c for c in comments if c.get('text') and 
-                         len(c['text'].strip()) > 20 and
-                         c['text'].lower() not in ['[deleted]', '[removed]']]
+        # Contextos temporales genéricos pero naturales
+        time_contexts = [
+            "a few hours later",
+            "the next day", 
+            "later that week",
+            "after some time",
+            "recently"
+        ]
         
-        for comment in valid_comments[:3]:
+        if index < len(time_contexts):
+            return time_contexts[index]
+        else:
+            return f"update {index + 1}"
+
+    def _process_comments_with_context(self, comments: List[Dict]) -> List[str]:
+        segments = []
+
+        if not comments:
+            return segments
+
+        # Introducción a los comentarios
+        if len(comments) == 1:
+            segments.append("Top comment.")
+        else:
+            segments.append("Top/Relevant comments.")
+
+        # Procesar comentarios individuales
+        for i, comment in enumerate(comments[:2]):  # Máximo 2 comentarios
             clean_comment = self._clean_text(comment['text'])
             if clean_comment:
-                comment_texts.append(clean_comment)
-        
-        return comment_texts
-    
+                segments.append(f"{clean_comment}")
+
+        return segments
+
     def _clean_text(self, text: str) -> str:
         if not text:
             return ""
@@ -115,44 +142,3 @@ class NarrativeBuilder:
         
         return text
 
-    def _create_segments(self, text: str, max_words_per_segment: int = 100) -> List[str]:
-        if not text:
-            return []
-        
-        # Split by sentences first
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        segments = []
-        current_segment = ""
-        
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if not sentence:
-                continue
-            
-            # Check if adding this sentence exceeds word limit
-            test_segment = f"{current_segment} {sentence}".strip()
-            
-            if len(test_segment.split()) <= max_words_per_segment:
-                current_segment = test_segment
-            else:
-                # Save current segment if it has content
-                if current_segment:
-                    segments.append(current_segment)
-                
-                # Start new segment with current sentence
-                if len(sentence.split()) <= max_words_per_segment:
-                    current_segment = sentence
-                else:
-                    # If sentence is too long, split it by words
-                    words = sentence.split()
-                    for i in range(0, len(words), max_words_per_segment):
-                        chunk = ' '.join(words[i:i + max_words_per_segment])
-                        segments.append(chunk)
-                    current_segment = ""
-        
-        # Add final segment
-        if current_segment:
-            segments.append(current_segment)
-        
-        return segments
-    

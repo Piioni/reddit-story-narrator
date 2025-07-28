@@ -452,7 +452,7 @@ class RedditScraper:
         try:
             comment_limit = self.search_params.get('comment_limit', 2)
             min_upvotes = self.search_params.get('min_comment_upvotes', 100)
-            max_length = self.search_params.get('max_comment_length', 288)
+            max_length = self.search_params.get('max_comment_length', 500)
             
             # Obtener el nombre del autor del post
             post_author = post.author.name if post.author else None
