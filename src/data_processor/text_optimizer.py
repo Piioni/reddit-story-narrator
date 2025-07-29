@@ -35,7 +35,30 @@ class TextOptimizer:
             'LTR': 'Long Term Relationship',
             'RAPE': 'Sexual Assault',
             'RAPED': 'Sexually Assaulted',
-            'SUICIDE': 'Taking one\'s own life'
+            'SUICIDE': 'Taking one\'s own life',
+            'FUCK' : 'f*ck',
+            'SHIT': 'crap',
+            'DAMN': 'd*mn',
+            'BITCH': 'b*tch',
+            'ASSHOLE': 'a*shole',
+            'BASTARD': 'b*stard',
+            'HELL': 'heck',
+            'PISS': 'p*ss',
+            'DICKHEAD': 'd*ckhead',
+            'MOTHERFUCKER': 'm*therf*cker',
+            'FUCKING': 'f*cking',
+            'FUCKED': 'f*cked',
+            'BULLSHIT': 'b*llsh*t',
+            'DUMBASS': 'dumb*ss',
+            'COCKSUCKER': 'c*cksucker',
+            'SLUT': 'sl*t',
+            'WHORE': 'wh*re',
+            'RETARD': 'r*tard',
+            'RETARDED': 'r*tarded',
+            'FAGGOT': 'f*ggot',
+            'NIGGER': 'n-word',
+            'NIGGA' : 'n-word',
+            'CUNT': 'c*nt'
         }
         
         # Number to word conversions for better TTS
@@ -175,8 +198,6 @@ class TextOptimizer:
         
         # Fix common typing errors that affect pronunciation
         text = re.sub(r'\bthru\b', 'through', text, flags=re.IGNORECASE)
-        text = re.sub(r'\bu\b', 'you', text, flags=re.IGNORECASE)
-        text = re.sub(r'\bur\b', 'your', text, flags=re.IGNORECASE)
         text = re.sub(r'\br\b', 'are', text, flags=re.IGNORECASE)
         
         # Fix all caps words (except known abbreviations) - TTS often mispronounces them

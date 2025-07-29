@@ -23,7 +23,6 @@ class RedditScrapperApp:
         self.categories = self._load_categories_from_db()
         
     def _load_categories_from_db(self):
-        """Carga categorías desde la DB administrativa. FALLA si no puede conectar."""
         try:
             print("🔍 Conectando a base de datos administrativa...")
             conn = psycopg2.connect(database='reddit_admin', **self.base_db_config)
@@ -47,7 +46,6 @@ class RedditScrapperApp:
             
             if not categories:
                 print("❌ No se encontraron categorías en la base de datos")
-                print("💡 Ejecuta: python scripts/migrate_db.py --init")
                 sys.exit(1)
             
             print(f"✅ Categorías cargadas: {', '.join(categories.keys())}")
@@ -55,19 +53,11 @@ class RedditScrapperApp:
             return categories
             
         except psycopg2.OperationalError as e:
-            print("❌ Error de conexión a PostgreSQL:")
             print(f"   {str(e)}")
-            print("\n💡 Posibles soluciones:")
-            print("   1. Verifica que Docker esté ejecutándose: docker-compose ps")
-            print("   2. Inicia PostgreSQL: docker-compose up -d")
-            print("   3. Inicializa la DB: python scripts/migrate_db.py --init")
             sys.exit(1)
             
         except psycopg2.Error as e:
-            print("❌ Error en la base de datos:")
             print(f"   {str(e)}")
-            print("\n💡 Solución:")
-            print("   Inicializa la base de datos: python scripts/migrate_db.py --init")
             sys.exit(1)
             
         except Exception as e:
@@ -76,7 +66,6 @@ class RedditScrapperApp:
             sys.exit(1)
     
     def show_menu(self):
-        """Muestra menú interactivo de categorías."""
         print("\n" + "="*70)
         print("🎯 REDDIT SCRAPER - SELECCIONAR CATEGORÍA")
         print("="*70)
@@ -113,7 +102,6 @@ class RedditScrapperApp:
                 print("❌ Por favor ingresa un número válido")
     
     def _show_statistics(self):
-        """Muestra estadísticas actuales de todas las categorías."""
         print("\n" + "="*60)
         print("📊 ESTADÍSTICAS ACTUALES")
         print("="*60)
@@ -136,7 +124,6 @@ class RedditScrapperApp:
         input("\nPresiona Enter para continuar...")
     
     def _get_category_stats(self, database_name):
-        """Obtiene estadísticas de una categoría específica."""
         try:
             conn = self._get_db_connection(database_name)
             cursor = conn.cursor()
@@ -166,7 +153,6 @@ class RedditScrapperApp:
             return None
     
     def run_scraper(self, category_name):
-        """Ejecuta el scraper para una categoría específica."""
         if category_name not in self.categories:
             print(f"❌ Categoría '{category_name}' no encontrada")
             return False
@@ -197,9 +183,7 @@ class RedditScrapperApp:
             
             print(f"✅ Scraper completado para {category_name}")
             print(f"📝 Posts obtenidos: {len(posts)}")
-            
-            # ✅ Las estadísticas se actualizan automáticamente via triggers
-            
+                        
             scraper.close()
             return True
             
@@ -215,7 +199,6 @@ class RedditScrapperApp:
             return False
     
     def _build_scraper_config(self, subreddits, database):
-        """Construye configuración para el scraper usando la config base."""
         return {
             'client_id': os.getenv('REDDIT_CLIENT_ID'),
             'client_secret': os.getenv('REDDIT_CLIENT_SECRET'),
@@ -231,18 +214,16 @@ class RedditScrapperApp:
                 'max_comment_length': int(os.getenv('MAX_COMMENT_LENGTH', '500'))
             },
             'db_config': {
-                **self.base_db_config,  # 🎯 Usar configuración base
-                'database': database   # Solo cambiar la DB específica
+                **self.base_db_config, 
+                'database': database   
             }
         }
     
     def _get_db_connection(self, database_name=None):
-        """Helper para obtener conexión a DB específica."""
         db_name = database_name or 'reddit_admin'
         return psycopg2.connect(database=db_name, **self.base_db_config)
     
     def _log_scraping_start(self, category_name, database_name):
-        """Registra inicio del scraping en la DB administrativa."""
         try:
             conn = self._get_db_connection('reddit_admin')
             cursor = conn.cursor()
@@ -264,7 +245,6 @@ class RedditScrapperApp:
             return None
     
     def _log_scraping_end(self, log_id, posts_count, success=True):
-        """Registra finalización del scraping."""
         if not log_id:
             return
             
@@ -290,11 +270,9 @@ def main():
     print("🎯 Inicializando Reddit Scraper...")
     
     try:
-        # ✅ Fallar inmediatamente si no puede conectar a DB
         app = RedditScrapperApp()
         
     except SystemExit:
-        # ✅ Ya se mostró el error apropiado
         return
     except Exception as e:
         print(f"❌ Error crítico durante la inicialización: {e}")
@@ -343,8 +321,8 @@ def main():
                     print("❌ Scraping cancelado")
                 
                 # Preguntar si quiere hacer otro scraping
-                another = input(f"\n¿Realizar otro scraping? (s/n): ").lower()
-                if another not in ['s', 'si', 'y', 'yes']:
+                another = input(f"\n¿Realizar otro scraping? (y/n): ").lower()
+                if another not in ['y', 'yes']:
                     print("👋 ¡Hasta luego!")
                     break
                     

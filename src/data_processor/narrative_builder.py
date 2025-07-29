@@ -72,7 +72,6 @@ class NarrativeBuilder:
             if update_text and len(update_text.strip()) > 10:
                 clean_update = self._clean_text(update_text)
                 if clean_update:
-                    # ✅ Contexto temporal para updates
                     time_context = self._get_update_time_context(update, i)
                     update_segment = f"Update {time_context}. {clean_update}"
                     segments.append(update_segment)
