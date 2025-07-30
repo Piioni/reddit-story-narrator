@@ -19,24 +19,19 @@ def test_voice_synthesis():
     
     azure_config = {
         'SPEECH_KEY': os.getenv('AZURE_SPEECH_KEY'),
-        'SPEECH_REGION': os.getenv('AZURE_SPEECH_REGION', 'uksouth'),
-        'SPEECH_VOICE': os.getenv('AZURE_VOICE_NAME', 'en-US-JennyNeural')
+        'SPEECH_REGION': os.getenv('AZURE_SPEECH_REGION'),
+        'SPEECH_VOICE': os.getenv('AZURE_VOICE_NAME')
     }
-    
-    print(f"✅ Azure configurado - Región: {azure_config['SPEECH_REGION']}")
-    print(f"🎭 Voz seleccionada: {azure_config['SPEECH_VOICE']}")
     
     # Configuración BD
     db_config = {
-        'host': os.getenv('POSTGRES_HOST', 'localhost'),
-        'user': os.getenv('POSTGRES_USER', 'scraper'),
-        'password': os.getenv('POSTGRES_PASSWORD', 'scraper_pass'),
-        'port': int(os.getenv('POSTGRES_PORT', '5432')),
+        'host': os.getenv('POSTGRES_HOST'),
+        'user': os.getenv('POSTGRES_USER'),
+        'password': os.getenv('POSTGRES_PASSWORD'),
+        'port': int(os.getenv('POSTGRES_PORT', 5432)),
     }
     
-    try:
-        print("\n📊 Conectando a base de datos...")
-        
+    try:        
         # 1. Obtener contenido procesado
         retriever = ContentRetriever(db_config)
         posts = retriever.get_unprocessed_posts('aita', limit=1)
