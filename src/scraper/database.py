@@ -3,15 +3,7 @@ import psycopg2
 from psycopg2.extensions import cursor as Cursor
 from typing import List, Dict, Optional, Any
 from datetime import datetime
-from dataclasses import dataclass
-
-@dataclass
-class DatabaseConfig:
-    host: str
-    database: str
-    user: str
-    password: str
-    port: int = 5432
+from utils.models import DatabaseConfig
 
 class DatabaseManager:
     def __init__(self, config: DatabaseConfig, logger):
@@ -96,7 +88,7 @@ class DatabaseManager:
             
             # Iniciar transacción
             if self.connection:
-                self.connection.rollback()  # Limpiar cualquier transacción previa
+                self.connection.rollback() 
             
             # 1. Insertar post principal
             post_id = self._insert_post(cursor, post_data)
@@ -263,7 +255,6 @@ class DatabaseManager:
             return {}
     
     def close(self):
-        """Cierra la conexión a la base de datos."""
         if self.connection:
             self.connection.close()
             self.logger.info("Conexión a base de datos cerrada")

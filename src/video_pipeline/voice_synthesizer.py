@@ -4,7 +4,7 @@ from typing import List, Dict
 import json
 import librosa
 
-from data_models.video_models import ProcessedContent
+from utils.models import ProcessedContent
 from utils.logger import StructuredLogger
 
 class VoiceSynthesizer:   

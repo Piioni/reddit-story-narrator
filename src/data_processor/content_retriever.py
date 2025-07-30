@@ -1,7 +1,7 @@
 import psycopg2
 import psycopg2.extras
 from typing import List, Dict
-from data_models.video_models import RedditPost
+from utils.models import RedditPost
 from utils.logger import StructuredLogger
 
 class ContentRetriever:   

@@ -1,6 +1,6 @@
 import re
 from typing import Dict
-from data_models.video_models import ProcessedContent
+from utils.models import ProcessedContent
 from utils.logger import StructuredLogger
 
 class TextOptimizer: 

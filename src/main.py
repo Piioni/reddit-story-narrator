@@ -11,7 +11,6 @@ class RedditScrapperApp:
         load_dotenv()
         self.logger = StructuredLogger('RedditScrapperApp')
         
-        # 🎯 Configuración base de DB centralizada
         self.base_db_config = {
             'host': os.getenv('POSTGRES_HOST', 'localhost'),
             'user': os.getenv('POSTGRES_USER', 'scraper'),
@@ -19,12 +18,10 @@ class RedditScrapperApp:
             'port': int(os.getenv('POSTGRES_PORT', '5432'))
         }
         
-        # ✅ Cargar categorías (falla si no puede conectar)
         self.categories = self._load_categories_from_db()
         
     def _load_categories_from_db(self):
         try:
-            print("🔍 Conectando a base de datos administrativa...")
             conn = psycopg2.connect(database='reddit_admin', **self.base_db_config)
             cursor = conn.cursor()
             
@@ -38,36 +35,35 @@ class RedditScrapperApp:
             for row in cursor.fetchall():
                 categories[row[0]] = {
                     'database': row[1],
-                    'subreddits': list(row[2]),  # PostgreSQL array to Python list
+                    'subreddits': list(row[2]),
                     'description': row[3]
                 }
             
             conn.close()
             
             if not categories:
-                print("❌ No se encontraron categorías en la base de datos")
+                print(" No se encontraron categorías en la base de datos")
                 sys.exit(1)
             
-            print(f"✅ Categorías cargadas: {', '.join(categories.keys())}")
             self.logger.info(f"Categorías cargadas desde DB", count=len(categories))
             return categories
             
         except psycopg2.OperationalError as e:
-            print(f"   {str(e)}")
+            self.logger.error("Error cargando categorías desde la base de datos", error=str(e)) 
             sys.exit(1)
             
         except psycopg2.Error as e:
-            print(f"   {str(e)}")
+            self.logger.error("Error cargando categorías desde la base de datos", error=str(e))
             sys.exit(1)
             
         except Exception as e:
-            print("❌ Error inesperado cargando categorías:")
+            self.logger.error("Error cargando categorías desde la base de datos", error=str(e))
             print(f"   {str(e)}")
             sys.exit(1)
     
     def show_menu(self):
         print("\n" + "="*70)
-        print("🎯 REDDIT SCRAPER - SELECCIONAR CATEGORÍA")
+        print("REDDIT SCRAPER - SELECCIONAR CATEGORÍA")
         print("="*70)
         
         # Mostrar categorías disponibles
@@ -76,9 +72,9 @@ class RedditScrapperApp:
         for i, (category, config) in enumerate(self.categories.items(), 1):
             subreddits_str = ', '.join(config['subreddits'])
             print(f"{i}. {category.upper()}")
-            print(f"   📝 {config['description']}")
-            print(f"   🏷️  Subreddits: {subreddits_str}")
-            print(f"   📁 Base de datos: {config['database']}")
+            print(f"📝 {config['description']}")
+            print(f"🏷️  Subreddits: {subreddits_str}")
+            print(f"📁 Base de datos: {config['database']}")
             print()
         
         print(f"{len(self.categories) + 1}. Ver estadísticas")
@@ -97,10 +93,10 @@ class RedditScrapperApp:
                 elif 1 <= choice_num <= len(self.categories):
                     return category_list[choice_num - 1]
                 else:
-                    print("❌ Opción inválida")
+                    print("Opción inválida")
             except ValueError:
-                print("❌ Por favor ingresa un número válido")
-    
+                print("Por favor ingresa un número válido")
+
     def _show_statistics(self):
         print("\n" + "="*60)
         print("📊 ESTADÍSTICAS ACTUALES")
@@ -119,7 +115,7 @@ class RedditScrapperApp:
                 if last_updated != 'Nunca':
                     print(f"   🕒 Última actualización: {last_updated}")
             else:
-                print("   ❌ No hay datos disponibles")
+                print("No hay datos disponibles")
         
         input("\nPresiona Enter para continuar...")
     
@@ -154,15 +150,12 @@ class RedditScrapperApp:
     
     def run_scraper(self, category_name):
         if category_name not in self.categories:
-            print(f"❌ Categoría '{category_name}' no encontrada")
+            print(f"Categoría '{category_name}' no encontrada")
             return False
             
         config = self.categories[category_name]
         
-        print(f"\n🚀 Iniciando scraper para: {category_name.upper()}")
-        print(f"� Base de datos: {config['database']}")
-        print(f"🏷️  Subreddits: {', '.join(config['subreddits'])}")
-        print(f"📝 Descripción: {config['description']}")
+        self.logger.info(f"Ejecutando scraper para {category_name}", config=config)
         
         try:
             # Registrar inicio en logs
@@ -181,15 +174,12 @@ class RedditScrapperApp:
             # Registrar finalización
             self._log_scraping_end(log_id, len(posts), success=True)
             
-            print(f"✅ Scraper completado para {category_name}")
-            print(f"📝 Posts obtenidos: {len(posts)}")
-                        
+            self.logger.info(f"Scraping completado para {category_name}", posts_count=len(posts))
             scraper.close()
             return True
             
         except Exception as e:
             self.logger.error(f"Error ejecutando scraper para {category_name}", error=str(e))
-            print(f"❌ Error: {e}")
             
             # Registrar error
             log_id = locals().get('log_id')
@@ -205,13 +195,13 @@ class RedditScrapperApp:
             'user_agent': os.getenv('REDDIT_USER_AGENT'),
             'subreddits': subreddits,
             'search_params': {
-                'time_filter': os.getenv('TIME_FILTER', 'week'),
-                'min_upvotes': int(os.getenv('MIN_UPVOTES', '1000')),
-                'limit': int(os.getenv('LIMIT', '10')),
-                'post_type': os.getenv('POST_TYPE', 'hot'),
-                'comment_limit': int(os.getenv('COMMENT_LIMIT', '2')),
-                'min_comment_upvotes': int(os.getenv('MIN_COMMENT_UPVOTES', '69')),
-                'max_comment_length': int(os.getenv('MAX_COMMENT_LENGTH', '500'))
+                'time_filter': os.getenv('TIME_FILTER'),
+                'min_upvotes': int(os.getenv('MIN_UPVOTES', 100)),
+                'limit': int(os.getenv('LIMIT', 5)),
+                'post_type': os.getenv('POST_TYPE'),
+                'comment_limit': int(os.getenv('COMMENT_LIMIT', 2)),
+                'min_comment_upvotes': int(os.getenv('MIN_COMMENT_UPVOTES', 250)),
+                'max_comment_length': int(os.getenv('MAX_COMMENT_LENGTH', 500)),
             },
             'db_config': {
                 **self.base_db_config, 
@@ -275,7 +265,7 @@ def main():
     except SystemExit:
         return
     except Exception as e:
-        print(f"❌ Error crítico durante la inicialización: {e}")
+        print(f"Error crítico durante la inicialización: {e}")
         sys.exit(1)
     
     if len(sys.argv) > 1:
@@ -286,7 +276,7 @@ def main():
             success = app.run_scraper(category)
             sys.exit(0 if success else 1)
         else:
-            print(f"❌ Categoría '{category}' no encontrada")
+            print(f"Categoría '{category}' no encontrada")
             print(f"Categorías disponibles: {', '.join(app.categories.keys())}")
             sys.exit(1)
     else:
@@ -296,7 +286,7 @@ def main():
                 selection = app.show_menu()
                 
                 if selection is None:
-                    print("👋 ¡Hasta luego!")
+                    print("¡Hasta luego!")
                     break
                 
                 # Confirmar antes de ejecutar
@@ -304,22 +294,19 @@ def main():
                 subreddits_str = ', '.join(config['subreddits'])
                 
                 print(f"\n📋 Vas a scrapear:")
-                print(f"   🏷️  Categoría: {selection.upper()}")
-                print(f"   📝 {config['description']}")
-                print(f"   🔗 Subreddits: {subreddits_str}")
-                print(f"   📁 Base de datos: {config['database']}")
+                print(f"🔗 Subreddits: {subreddits_str}")
                 
                 confirm = input(f"\n¿Continuar con el scraping? (s/n): ").lower()
                 if confirm in ['s', 'si', 'y', 'yes']:
                     success = app.run_scraper(selection)
                     
                     if success:
-                        print(f"\n🎉 ¡Scraping completado exitosamente!")
+                        print(f"\n¡Scraping completado exitosamente!")
                     else:
-                        print(f"\n❌ El scraping falló")
+                        print(f"\nEl scraping falló")
                 else:
-                    print("❌ Scraping cancelado")
-                
+                    print("Scraping cancelado")
+
                 # Preguntar si quiere hacer otro scraping
                 another = input(f"\n¿Realizar otro scraping? (y/n): ").lower()
                 if another not in ['y', 'yes']:
@@ -327,9 +314,9 @@ def main():
                     break
                     
         except KeyboardInterrupt:
-            print("\n⏸️  Programa interrumpido por el usuario")
+            print("\nPrograma interrumpido por el usuario")
         except Exception as e:
-            print(f"\n❌ Error inesperado: {e}")
+            print(f"\nError inesperado: {e}")
             sys.exit(1)
 
 if __name__ == '__main__':

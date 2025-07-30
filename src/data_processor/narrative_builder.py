@@ -1,6 +1,6 @@
 import re
 from typing import Dict, List, Optional
-from data_models.video_models import RedditPost, ProcessedContent
+from utils.models import RedditPost, ProcessedContent
 from utils.logger import StructuredLogger
 
 class NarrativeBuilder:    
