@@ -1,11 +1,10 @@
 import azure.cognitiveservices.speech as speechsdk
-from pathlib import Path
-from typing import List, Dict
 import json
 import librosa
 
-from utils.models import ProcessedContent
-from utils.logger import StructuredLogger
+from utils import ProcessedContent, StructuredLogger
+from pathlib import Path
+from typing import List, Dict
 
 class VoiceSynthesizer:   
     def __init__(self, azure_config: Dict):
