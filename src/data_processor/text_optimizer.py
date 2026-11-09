@@ -124,32 +124,39 @@ class TextOptimizer:
         
         return text.strip()
     
+    # Also ordinary English words, so only the uppercase form is an abbreviation
+    case_sensitive_abbreviations = {'SO', 'NAH'}
+
     def _replace_abbreviations(self, text: str) -> str:
         for abbrev, full_form in self.abbreviations.items():
             # Use word boundaries to avoid partial replacements
             pattern = r'\b' + re.escape(abbrev) + r'\b'
-            text = re.sub(pattern, full_form, text, flags=re.IGNORECASE)
-        
+            flags = 0 if abbrev in self.case_sensitive_abbreviations else re.IGNORECASE
+            text = re.sub(pattern, full_form, text, flags=flags)
+
         return text
     
     def _normalize_numbers(self, text: str) -> str:
-        # Replace standalone single digits with words
-        for digit, word in self.number_words.items():
-            pattern = r'\b' + digit + r'\b'
-            text = re.sub(pattern, word, text)
+        # Composite patterns go first: replacing single digits before them
+        # would break "$5", "24/7" and "3/4" before they can match.
+
         # Handle ages more naturally (25M -> 25 male)
         text = re.sub(r'\b(\d{1,2})[Mm]\b', r'\1 male', text)
         text = re.sub(r'\b(\d{1,2})[Ff]\b', r'\1 female', text)
 
         # Handle money amounts
         text = re.sub(r'\$(\d+)k\b', r'\1 thousand dollars', text, flags=re.IGNORECASE)
-        text = re.sub(r'\$(\d+)K\b', r'\1 thousand dollars', text)
         text = re.sub(r'\$(\d+)\b', r'\1 dollars', text)
-        
+
         # Handle time formats (24/7 -> twenty four seven)
         text = re.sub(r'\b24/7\b', 'twenty four seven', text)
         text = re.sub(r'\b(\d{1,2})/(\d{1,2})\b', r'\1 out of \2', text)
-        
+
+        # Replace standalone single digits with words
+        for digit, word in self.number_words.items():
+            pattern = r'\b' + digit + r'\b'
+            text = re.sub(pattern, word, text)
+
         return text
     
     def _fix_contractions(self, text: str) -> str:

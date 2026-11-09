@@ -20,3 +20,7 @@ __pycache__/
 *.png
 
 logs/
+# Tests and generated audio
+.pytest_cache/
+test_audio/
+*.wav

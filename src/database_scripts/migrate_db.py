@@ -10,7 +10,7 @@ class DatabaseMigrator:
         self.db_config = {
             'host': os.getenv('POSTGRES_HOST', 'localhost'),
             'user': os.getenv('POSTGRES_USER', 'scraper'),
-            'password': os.getenv('POSTGRES_PASSWORD', 'scraper_pass'),
+            'password': os.environ['POSTGRES_PASSWORD'],
             'port': int(os.getenv('POSTGRES_PORT', '5432'))
         }
         
@@ -68,9 +68,11 @@ class DatabaseMigrator:
         if 'reddit_admin' not in existing_dbs:
             print("🆕 Creando base de datos administrativa: reddit_admin")
             self._create_admin_database()
-            self._create_admin_schema()
         else:
             print("✅ Base de datos administrativa ya existe")
+
+        # Idempotente (IF NOT EXISTS): repara una base que existe sin sus tablas
+        self._create_admin_schema()
     
     def _create_admin_database(self):
         conn = psycopg2.connect(database='postgres', **self.db_config)

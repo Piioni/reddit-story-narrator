@@ -1,5 +1,5 @@
 praw
 psycopg2-binary
-dotenv
+python-dotenv
 azure-cognitiveservices-speech
 librosa
