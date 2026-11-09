@@ -1,21 +1,25 @@
 # Reddit Story Narrator
 
 [![Tests](https://github.com/Piioni/reddit-story-narrator/actions/workflows/tests.yml/badge.svg)](https://github.com/Piioni/reddit-story-narrator/actions/workflows/tests.yml)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 Scrapes story-style Reddit posts, prepares the text for text-to-speech, and narrates it with Azure Speech.
 
-> **Status:** the scraping, storage, narration script, and voice synthesis work. Video composition (subtitles and backgrounds) is **not implemented**. This is a personal project with low maintenance.
+> [!NOTE]
+> The scraping, storage, narration script, and voice synthesis work. Video composition (subtitles and backgrounds) is **not implemented**. This is a personal project with low maintenance.
 
 ## How it works
 
-```text
-Reddit (PRAW)
-   -> RedditScraper        finds posts, author updates and top comments, removes duplicates
-   -> PostgreSQL           one database per category
-   -> ContentRetriever     takes unprocessed posts
-   -> NarrativeBuilder     builds the script: title, post, updates, comments
-   -> TextOptimizer        rewrites text so a voice reads it well
-   -> VoiceSynthesizer     Azure Speech -> full_audio.wav + audio_metadata.json
+```mermaid
+flowchart TD
+    A[Reddit / PRAW] --> B[RedditScraper<br/>posts, author updates, top comments, dedupe]
+    B --> C[(PostgreSQL<br/>one database per category)]
+    C --> D[ContentRetriever<br/>unprocessed posts]
+    D --> E[NarrativeBuilder<br/>title, post, updates, comments]
+    E --> F[TextOptimizer<br/>text a voice reads well]
+    F --> G[VoiceSynthesizer<br/>Azure Speech]
+    G --> H[/full_audio.wav + audio_metadata.json/]
 ```
 
 - **Updates.** Stories often continue in later posts. The scraper looks for the author's updates in the post's comments, in the subreddit, and in the author's profile, and drops duplicates by hashing the normalized text.
@@ -84,7 +88,8 @@ pytest
 
 ## Responsible use
 
-Reddit posts belong to their authors and are covered by Reddit's [Data API Terms](https://www.redditinc.com/policies/data-api-terms) and User Agreement. Use your own API credentials, respect the rate limits, and check those terms, and the policies of wherever you publish, before reusing or republishing anyone's content. This project does not do that for you.
+> [!WARNING]
+> Reddit posts belong to their authors and are covered by Reddit's [Data API Terms](https://www.redditinc.com/policies/data-api-terms) and User Agreement. Use your own API credentials, respect the rate limits, and check those terms, and the policies of wherever you publish, before reusing or republishing anyone's content. This project does not do that for you.
 
 ## Known limitations
 
