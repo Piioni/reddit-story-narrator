@@ -11,7 +11,7 @@ class SchemaMigrator:
         self.db_config = {
             'host': os.getenv('POSTGRES_HOST', 'localhost'),
             'user': os.getenv('POSTGRES_USER', 'scraper'),
-            'password': os.getenv('POSTGRES_PASSWORD', 'scraper_pass'),
+            'password': os.environ['POSTGRES_PASSWORD'],
             'port': int(os.getenv('POSTGRES_PORT', '5432'))
         }
         
