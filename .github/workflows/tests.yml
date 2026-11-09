@@ -1,0 +1,22 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The tests only cover pure logic, so the Azure and audio dependencies are not needed.
+      - name: Install dependencies
+        run: pip install praw psycopg2-binary python-dotenv pytest
+
+      - name: Run tests
+        run: pytest
