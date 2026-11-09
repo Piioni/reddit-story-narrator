@@ -86,3 +86,45 @@ def test_optimization_stats_handle_empty_input():
         "optimized_chars": 0,
         "abbreviations_replaced": 0,
     }
+
+
+def test_money_amounts_are_spoken_as_dollars():
+    optimizer = TextOptimizer()
+
+    assert optimizer._normalize_numbers("It cost $5.") == "It cost five dollars."
+    assert optimizer._normalize_numbers("It cost $150.") == "It cost 150 dollars."
+    assert optimizer._normalize_numbers("It cost $20k.") == "It cost 20 thousand dollars."
+
+
+def test_fractions_are_spoken_as_out_of():
+    assert TextOptimizer()._normalize_numbers("I finished 3/4 of it.") == "I finished three out of four of it."
+
+
+def test_twenty_four_seven_is_spelled_out():
+    assert TextOptimizer()._normalize_numbers("Open 24/7.") == "Open twenty four seven."
+
+
+def test_ages_with_gender_are_spoken():
+    assert TextOptimizer()._normalize_numbers("I am 25M.") == "I am 25 male."
+
+
+def test_the_common_word_so_is_not_treated_as_an_abbreviation():
+    assert TextOptimizer()._optimize_text("I did so well.") == "I did so well."
+
+
+def test_the_common_word_nah_is_not_treated_as_an_abbreviation():
+    assert TextOptimizer()._optimize_text("Nah, it was fine.") == "Nah, it was fine."
+
+
+def test_uppercase_so_and_nah_are_still_expanded():
+    result = TextOptimizer()._optimize_text("My SO said NAH.")
+
+    assert result == "My significant other said No A-holes Here."
+
+
+def test_lowercase_relationship_abbreviations_are_still_expanded():
+    assert TextOptimizer()._optimize_text("my bf and my mil.") == "my boyfriend and my mother in law."
+
+
+def test_profanity_is_censored_regardless_of_case():
+    assert TextOptimizer()._optimize_text("What the hell happened.") == "What the heck happened."
